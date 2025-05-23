@@ -32,5 +32,4 @@ urlpatterns = [
 
     # MOVIMENTAÇÕES
     path('movimentacoes/', views.movimentacao_listar, name='movimentacao_listar'),
-    path('movimentacoes/registrar/', views.movimentacao_registrar, name='movimentacao_registrar'),
 ]
