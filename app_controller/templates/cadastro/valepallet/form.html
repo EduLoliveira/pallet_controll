@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-{% load static %}
 <html lang="pt-br">
+{% load static %}
 
 <head>
     <meta charset="UTF-8">
@@ -50,6 +50,42 @@
                             </li>
                         </ul>
                     </li>
+                    <!-- Novo dropdown de LISTAGENS -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button"
+                            data-bs-toggle="dropdown">
+                            <i class="bi bi-list-ul me-2" style="font-size: 1.7rem;"></i>
+                            <h5>LISTAGENS</h5>
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'cliente_listar' %}">
+                                    <i class="bi bi-people me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>CLIENTES</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'motorista_listar' %}">
+                                    <i class="bi bi-person-badge me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>MOTORISTAS</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center"
+                                    href="{% url 'transportadora_listar' %}">
+                                    <i class="bi bi-truck me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>TRANSPORTADORAS</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'valepallet_listar' %}">
+                                    <i class="bi bi-receipt me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>VALES DE PALLET</h5>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
                     <li class="nav-item">
                         <a class="nav-link d-flex align-items-center" href="{% url 'valepallet_cadastrar' %}">
                             <i class="bi bi-receipt me-2" style="font-size: 2rem;"></i>
@@ -63,6 +99,7 @@
                         </a>
                     </li>
                 </ul>
+
             </div>
         </div>
     </nav>
@@ -72,52 +109,66 @@
         <div class="container-fluid px-5">
             <h3>VALE PALLET</h3>
             <div class="form-container">
-                <form method="post" action="{% url 'valepallet_listar' %}" id="valeForm">
+                <form method="post" action="" id="valePalletForm">
                     {% csrf_token %}
+                    {{ form.non_field_errors }}
+
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label for="numero_vale" class="form-label">Número do Vale</label>
-                            <input type="text" class="form-control" id="numero_vale" name="numero_vale" required>
+                            {{ form.numero_vale.label_tag }}
+                            {{ form.numero_vale }}
                         </div>
                         <div class="col-md-6">
-                            <label for="data_validade" class="form-label">Data de Validade</label>
-                            <input type="date" class="form-control" id="data_validade" name="data_validade" required>
+                            {{ form.data_validade.label_tag }}
+                            {{ form.data_validade }}
                         </div>
                     </div>
+
                     <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label for="cliente" class="form-label">Cliente</label>
-                            <select class="form-select" id="cliente" name="cliente" required>
-                                <option value="" selected disabled>Selecione um cliente</option>
-                                <option value="1">Cliente 1</option>
-                                <option value="2">Cliente 2</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="motorista" class="form-label">Motorista</label>
-                            <select class="form-select" id="motorista" name="motorista" required>
-                                <option value="" selected disabled>Selecione um motorista</option>
-                                <option value="1">Motorista 1</option>
-                                <option value="2">Motorista 2</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="transportadora" class="form-label">Transportadora</label>
-                            <select class="form-select" id="transportadora" name="transportadora" required>
-                                <option value="" selected disabled>Selecione uma transportadora</option>
-                                <option value="1">Transportadora 1</option>
-                                <option value="2">Transportadora 2</option>
+                        <div class="col-md-12">
+                            <label for="{{ form.cliente.id_for_label }}">Cliente</label>
+                            <select name="{{ form.cliente.name }}" id="{{ form.cliente.id_for_label }}"
+                                class="form-select" required>
+                                <option value="" selected disabled>Selecione um cliente...</option>
+                                {% for cliente in form.cliente.field.queryset %}
+                                <option value="{{ cliente.id }}">{{ cliente.nome }} - {{ cliente.cnpj }}</option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>
+
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label for="qtd_pbr" class="form-label">Quantidade PBR</label>
-                            <input type="number" class="form-control" id="qtd_pbr" name="qtd_pbr" min="0" required>
+                            <label for="{{ form.motorista.id_for_label }}">Motorista</label>
+                            <select name="{{ form.motorista.name }}" id="{{ form.motorista.id_for_label }}"
+                                class="form-select" required>
+                                <option value="" selected disabled>Selecione um motorista...</option>
+                                {% for motorista in form.motorista.field.queryset %}
+                                <option value="{{ motorista.pk }}">{{ motorista }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-md-6">
-                            <label for="qtd_chepp" class="form-label">Quantidade CHEP</label>
-                            <input type="number" class="form-control" id="qtd_chepp" name="qtd_chepp" min="0" required>
+                            <label for="{{ form.transportadora.id_for_label }}">Transportadora</label>
+                            <select name="{{ form.transportadora.name }}" id="{{ form.transportadora.id_for_label }}"
+                                class="form-select" required>
+                                <option value="" selected disabled>Selecione uma transportadora...</option>
+                                {% for transportadora in form.transportadora.field.queryset %}
+                                <option value="{{ transportadora.id }}">{{ transportadora.nome }} -
+                                    {{transportadora.cnpj }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            {{ form.qtd_pbr.label_tag }}
+                            {{ form.qtd_pbr }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.qtd_chepp.label_tag }}
+                            {{ form.qtd_chepp }}
                         </div>
                     </div>
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -126,37 +177,40 @@
                     </div>
                 </form>
             </div>
-
-            <!-- Modal para exibir o QR Code -->
-            <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Vale Pallet Registrado</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body text-center">
-                            <div id="qrCodeContainer"><img src="{{ vale.qr_code.url }}" alt="QR Code"></div>
-                            <p class="mt-3">Vale registrado com sucesso!</p>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fechar</button>
-                            <a href="{% url 'movimentacao_listar' %}" class="btn btn-success">Ver Movimentações</a>
-                            
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     </main>
 
-   
+    <script>
+        // Garante que o placeholder seja único e remove qualquer opção vazia
+        document.addEventListener('DOMContentLoaded', function () {
+            const campos = ['cliente', 'motorista', 'transportadora'];
 
-    <!-- Footer com fontes grandes -->
-    <footer class="py-4 mt-auto bg-light">
-        <div class="container-fluid px-5">
+            campos.forEach(campo => {
+                const select = document.getElementById('id_' + campo);
+                if (select) {
+                    // Remove todas as opções vazias ou com traços
+                    Array.from(select.options).forEach(option => {
+                        if (option.value === '' || option.text.includes('---') || option.text.includes('------')) {
+                            select.removeChild(option);
+                        }
+                    });
+
+                    // Adiciona o placeholder no início, garantindo que seja único
+                    const placeholder = select.querySelector('option[value=""]');
+                    if (!placeholder) {
+                        select.insertAdjacentHTML('afterbegin', '<option value="" selected disabled>Selecione um ' + campo + '...</option>');
+                    }
+                }
+            });
+        });
+    </script>
+
+
+
+    <footer class="py-4 mt-auto bg-light" style="width: 100%;">
+        <div style="width: 100%;">
             <div class="d-flex flex-column flex-md-column justify-content-between align-items-center"
-                style="padding:1% 0; color:white; background-color: black;">
+                style="padding:1% 0; color:white; background-color: black; width: 100%;">
                 <div class="mb-3 mb-md-0">
                     <p class="mb-0 fw-bold fs-5">
                         <i class="bi bi-c-circle"></i> SISTEMA DE GESTÃO DE VALES DE PALLET
@@ -166,7 +220,6 @@
             </div>
         </div>
     </footer>
-
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
