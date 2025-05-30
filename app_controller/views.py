@@ -9,9 +9,10 @@ from .forms import ClienteForm, MotoristaForm, TransportadoraForm, ValePalletFor
 from .utils import generate_qr_code
 import base64
 import logging
+from django.utils import timezone
 
-# Configuração de logging
 logger = logging.getLogger(__name__)
+
 
 # ===== PÁGINA INICIAL =====
 def home(request):
@@ -234,10 +235,9 @@ def valepallet_listar(request):
         'url_cadastro': 'valepallet_cadastrar',
         'url_edicao': 'valepallet_editar'
     })
-
+    
 @transaction.atomic
 def valepallet_cadastrar(request):
-    # Carrega todos os dados para os selects (independente do método)
     clientes = Cliente.objects.all()
     motoristas = Motorista.objects.all()
     transportadoras = Transportadora.objects.all()
@@ -251,8 +251,14 @@ def valepallet_cadastrar(request):
                     vale.hash_seguranca = get_random_string(length=32)
                     vale.save()
 
-                    # Gera QR Code
-                    qr_data = f"vpallet:{vale.id}:{vale.hash_seguranca}"
+                    # Dados para o QR Code (formato JSON)
+                    qr_data = {
+                        "id": vale.id,
+                        "hash": vale.hash_seguranca,
+                        "numero_vale": vale.numero_vale,
+                        "url": request.build_absolute_uri(f'/valepallet/processar/{vale.id}/{vale.hash_seguranca}/')
+                    }
+                    
                     qr_code = generate_qr_code(qr_data)
                     qr_filename = f'vale_{vale.numero_vale}.png'
                     vale.qr_code.save(qr_filename, qr_code, save=True)
@@ -263,7 +269,8 @@ def valepallet_cadastrar(request):
                         return JsonResponse({
                             'success': True,
                             'qr_code_url': f"data:image/png;base64,{qr_base64}",
-                            'vale_id': vale.id
+                            'vale_id': vale.id,
+                            'qr_data': qr_data  # Para debug
                         })
 
                     messages.success(request, f'Vale {vale.numero_vale} criado com sucesso!')
@@ -272,18 +279,10 @@ def valepallet_cadastrar(request):
             except Exception as e:
                 logger.error(f"Erro ao criar vale pallet: {str(e)}", exc_info=True)
                 messages.error(request, 'Erro ao criar vale pallet')
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return JsonResponse({
-                        'success': False,
-                        'error': str(e)
-                    }, status=500)
+                return JsonResponse({'success': False, 'error': str(e)}, status=500)
         else:
             messages.error(request, 'Por favor, corrija os erros abaixo.')
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({
-                    'success': False,
-                    'errors': form.errors
-                }, status=400)
+            return JsonResponse({'success': False, 'errors': form.errors}, status=400)
     else:
         form = ValePalletForm()
 
@@ -296,6 +295,8 @@ def valepallet_cadastrar(request):
         'transportadoras': transportadoras
     }
     return render(request, 'cadastro/valepallet/form.html', context)
+
+
 
 @require_http_methods(["GET"])
 def valepallet_detalhes(request, id):
@@ -345,70 +346,105 @@ def valepallet_remover(request, id):
         messages.error(request, 'Erro ao remover vale pallet')
     return redirect('valepallet_listar')
 
+
+
+
+
 # ===== VALIDAÇÃO QR CODE =====
+@transaction.atomic
+def processar_scan(request, id, hash_seguranca):
+    try:
+        # 1. Busca o vale pallet ou retorna 404
+        vale = get_object_or_404(ValePallet, id=id, hash_seguranca=hash_seguranca)
+        
+        # 2. Registra quem está fazendo a operação (se autenticado)
+        usuario = request.user if request.user.is_authenticated else None
+        
+        # 3. Lógica de transição de estados
+        if vale.estado == 'EMITIDO':
+            # Primeira transição: EMITIDO → SAIDA
+            vale.estado = 'SAIDA'
+            vale.usuario_saida = usuario
+            vale.data_saida = timezone.now()  # Registrar data/hora da saída
+            vale.save()
+            
+            Movimentacao.objects.create(
+                vale=vale,
+                tipo='SCAN',
+                responsavel=usuario,
+                observacao=f"Vale escaneado - Registrada SAÍDA"
+            )
+            
+            messages.success(request, f'Vale {vale.numero_vale} registrado como SAÍDA com sucesso!')
+            logger.info(f"Vale {vale.id} saída registrada por {usuario}")
+            
+        elif vale.estado == 'SAIDA':
+            # Segunda transição: SAIDA → RETORNO
+            vale.estado = 'RETORNO'
+            vale.usuario_retorno = usuario
+            vale.data_retorno = timezone.now()  # Registrar data/hora do retorno
+            vale.save()
+            
+            Movimentacao.objects.create(
+                vale=vale,
+                tipo='SCAN',
+                responsavel=usuario,
+                observacao=f"Vale escaneado - Registrado RETORNO"
+            )
+            
+            messages.success(request, f'Vale {vale.numero_vale} registrado como RETORNO com sucesso!')
+            logger.info(f"Vale {vale.id} retorno registrado por {usuario}")
+            
+        elif vale.estado == 'RETORNO':
+            # Vale já completou o ciclo
+            messages.warning(request, f'Vale {vale.numero_vale} já completou o ciclo (SAÍDA → RETORNO)!')
+            
+        else:
+            # Estado inválido/inesperado
+            messages.error(request, f'Estado atual do vale {vale.numero_vale} não permite esta operação!')
+        
+        # 4. Redireciona para a página de detalhes
+        return redirect('valepallet_detalhes', id=vale.id)
+        
+    except Exception as e:
+        logger.error(f"Erro ao processar vale {id}: {str(e)}", exc_info=True)
+        messages.error(request, 'Erro ao processar o vale pallet!')
+        return redirect('valepallet_listar')
+
+
+# ===== MOVIMENTAÇÕES =====
 @require_http_methods(["GET"])
-def scan_qr_code(request):
-    return render(request, 'cadastro/valepallet/scan_qr_code.html')
+def movimentacao_listar(request):
+    movimentacoes = Movimentacao.objects.select_related('vale').order_by('-data_hora')
+    return render(request, 'cadastro/movimentacao/listar.html', {
+        'movimentacoes': movimentacoes,
+        'titulo': 'Movimentações'
+    })
 
 @transaction.atomic
-def validar_qr(request):
-    if request.method != 'POST':
-        return redirect('scan_qr_code')
-    
-    qr_data = request.POST.get('qr_data', '').strip()
-    if not qr_data:
-        messages.error(request, "QR Code vazio!")
-        return redirect('scan_qr_code')
-
-    try:
-        if not qr_data.startswith('vpallet:'):
-            raise ValueError("Formato inválido. Use 'vpallet:id:hash'.")
-
-        _, vale_id, hash_recebido = qr_data.split(':')
-        vale = get_object_or_404(ValePallet, id=vale_id)
-
-        if vale.hash_seguranca != hash_recebido:
-            raise ValueError("QR Code adulterado ou inválido.")
-
-        if vale.esta_vencido:
-            messages.warning(request, f"Vale {vale.numero_vale} vencido!")
-            return redirect('valepallet_detalhes', id=vale.id)
-
-        # Determina o tipo de operação
-        if vale.estado == 'UTILIZADO':
-            tipo_operacao = 'DEVOLUCAO'
-            novo_estado = 'RETORNADO'
-            qtd_pbr = vale.saldo_pbr
-            qtd_chepp = vale.saldo_chepp
+def movimentacao_registrar(request):
+    if request.method == 'POST':
+        form = MovimentacaoForm(request.POST)
+        if form.is_valid():
+            try:
+                movimentacao = form.save()
+                messages.success(request, 'Movimentação registrada com sucesso!')
+                return redirect('movimentacao_listar')
+            except Exception as e:
+                logger.error(f"Erro ao registrar movimentação: {str(e)}")
+                messages.error(request, 'Erro ao registrar movimentação')
         else:
-            tipo_operacao = 'UTILIZACAO'
-            novo_estado = 'UTILIZADO'
-            qtd_pbr = vale.qtd_pbr
-            qtd_chepp = vale.qtd_chepp
-
-        # Cria movimentação
-        Movimentacao.objects.create(
-            vale=vale,
-            tipo=tipo_operacao,
-            qtd_pbr=qtd_pbr,
-            qtd_chepp=qtd_chepp,
-            responsavel=request.user.username
-        )
-
-        # Atualiza estado do vale
-        vale.estado = novo_estado
-        vale.save()
-
-        messages.success(request, f"Vale {vale.numero_vale} atualizado com sucesso!")
-        return redirect('valepallet_detalhes', id=vale.id)
-
-    except ValueError as e:
-        messages.error(request, str(e))
-    except Exception as e:
-        logger.error(f"Erro ao validar QR Code: {str(e)}")
-        messages.error(request, "Erro ao processar QR Code")
+            messages.error(request, 'Por favor, corrija os erros abaixo.')
+    else:
+        form = MovimentacaoForm()
     
-    return redirect('scan_qr_code')
+    return render(request, 'cadastro/movimentacao/form.html', {
+        'form': form,
+        'titulo': 'Registrar Movimentação',
+        'url_retorno': 'movimentacao_listar'
+    })
+    
+
 
 # ===== MOVIMENTAÇÕES =====
 @require_http_methods(["GET"])

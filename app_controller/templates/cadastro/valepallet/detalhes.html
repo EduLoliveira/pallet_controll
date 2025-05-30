@@ -151,7 +151,7 @@
                                             <li class="list-group-item d-flex justify-content-between">
                                                 <strong>Validade:</strong>
                                                 <span class="{% if vale.esta_vencido %}text-danger{% endif %}">
-                                                    {{ vale.data_validade|date:"d/m/Y H:i" }}
+                                                    {{ vale.data_validade|date:"d/m/Y" }} (válido até 23:59:59)
                                                     {% if vale.esta_vencido %}(Vencido){% endif %}
                                                 </span>
                                             </li>
@@ -196,13 +196,14 @@
                                             {% endif %}
 
                                             <div class="btn-group" role="group">
-                                                <a href="{% url 'scan_qr_code' %}?vale_id={{ vale.id }}"
-                                                    class="btn btn-primary">
-                                                    <i class="bi bi-qr-code-scan"></i> Escanear
-                                                </a>
                                                 <a href="{% url 'valepallet_editar' vale.id %}" class="btn btn-warning">
                                                     <i class="bi bi-pencil"></i> Editar
                                                 </a>
+                                                <a href="{% url 'valepallet_processar' vale.id vale.hash_seguranca %}"
+                                                    class="btn btn-primary" id="btn-scan">
+                                                    <i class="bi bi-qr-code-scan"></i> Escanear
+                                                </a>
+
                                                 <button class="btn btn-danger" data-bs-toggle="modal"
                                                     data-bs-target="#cancelModal">
                                                     <i class="bi bi-x-circle"></i> Cancelar
@@ -227,9 +228,6 @@
                                             <tr>
                                                 <th>Data/Hora</th>
                                                 <th>Tipo</th>
-                                                <th>PBR</th>
-                                                <th>CHEP</th>
-                                                <th>Responsável</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -238,13 +236,10 @@
                                                 <td>{{ mov.data_hora|date:"d/m/Y H:i" }}</td>
                                                 <td>
                                                     <span
-                                                        class="badge bg-{% if mov.tipo == 'ENTRADA' %}success{% elif mov.tipo == 'SAIDA' %}danger{% else %}info{% endif %}">
+                                                        class="badge bg-{% if mov.tipo == 'SCAN' %}info{% elif mov.tipo == 'SAIDA' %}danger{% elif mov.tipo == 'RETORNO' %}success{% else %}primary{% endif %}">
                                                         {{ mov.get_tipo_display }}
                                                     </span>
                                                 </td>
-                                                <td>{{ mov.qtd_pbr }}</td>
-                                                <td>{{ mov.qtd_chepp }}</td>
-                                                <td>{{ mov.responsavel }}</td>
                                             </tr>
                                             {% endfor %}
                                         </tbody>
@@ -284,14 +279,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Script para atualização automática -->
-            <script>
-                // Atualiza a página a cada 30 segundos para pegar mudanças de estado
-                setTimeout(function () {
-                    window.location.reload();
-                }, 30000);
-            </script>
             {% endblock %}
 
 

@@ -1,13 +1,11 @@
 from django.db import models
-from django.core.files.base import ContentFile
-from io import BytesIO
-import segno
 import secrets
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.core.validators import MinLengthValidator, RegexValidator
 from django.utils.translation import gettext_lazy as _
 from validate_docbr import CPF, CNPJ
+from django.conf import settings
 
 # Validações reutilizáveis
 telefone_validator = RegexValidator(
@@ -141,8 +139,8 @@ class Transportadora(models.Model):
 class ValePallet(models.Model):
     ESTADO_CHOICES = [
         ('EMITIDO', 'Emitido'),
-        ('UTILIZADO', 'Utilizado'),
-        ('RETORNADO', 'Retornado'),
+        ('SAIDA', 'Saida'),
+        ('RETORNO', 'Retorno'),
         ('CANCELADO', 'Cancelado'),
     ]
     
@@ -177,38 +175,20 @@ class ValePallet(models.Model):
     
     @property
     def esta_vencido(self):
-        return timezone.now() > self.data_validade
+        hoje = timezone.now().date()  # Pega apenas a data (ignora horário)
+        data_validade = self.data_validade.date()  # Converte data_validade para date (sem hora)
+        return hoje > data_validade
     
     def gerar_hash(self):
         """Gera um hash seguro usando secrets"""
         self.hash_seguranca = secrets.token_hex(16)
     
-    def gerar_qr_code(self):
-        """Gera QR Code e salva no campo qr_code"""
-        qr_data = f"vpallet:{self.id}:{self.hash_seguranca}"
-        qr = segno.make(qr_data)
-        buffer = BytesIO()
-        qr.save(buffer, kind="png", scale=5)
-        self.qr_code.save(f'qr_{self.numero_vale}.png', ContentFile(buffer.getvalue()), save=False)
-    
-    def save(self, *args, **kwargs):
-        if not self.pk:  # Novo registro
-            if not self.hash_seguranca:
-                self.gerar_hash()
-            self.saldo_pbr = self.qtd_pbr
-            self.saldo_chepp = self.qtd_chepp
-        
-        super().save(*args, **kwargs)
-        
-        if not self.qr_code:  # Gera QR Code após salvar
-            self.gerar_qr_code()
-            super().save(*args, **kwargs)
-
 class Movimentacao(models.Model):
     TIPO_CHOICES = [
-        ('ENTRADA', 'Entrada'),
-        ('SAIDA', 'Saída'),
+        ('EMITIDO', 'Emitido'),
+        ('SAIDA', 'Saida'),
         ('RETORNO', 'Retorno'),
+        ('CANCELADO', 'Cancelado'),
     ]
     
     vale = models.ForeignKey(ValePallet, on_delete=models.CASCADE)
@@ -234,7 +214,7 @@ class Movimentacao(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.pk:  # Apenas para novas movimentações
-            if self.tipo == 'ENTRADA':
+            if self.tipo == 'EMITIDO':
                 self.vale.saldo_pbr += self.qtd_pbr
                 self.vale.saldo_chepp += self.qtd_chepp
             elif self.tipo in ['SAIDA', 'RETORNO']:

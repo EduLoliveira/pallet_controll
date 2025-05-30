@@ -1,6 +1,6 @@
 import qrcode
 from io import BytesIO
-from django.core.files.base import ContentFile
+import json
 
 def generate_qr_code(data):
     qr = qrcode.QRCode(
@@ -9,6 +9,11 @@ def generate_qr_code(data):
         box_size=10,
         border=4,
     )
+    
+    # Se os dados forem um dicionário, converte para JSON
+    if isinstance(data, dict):
+        data = json.dumps(data)
+    
     qr.add_data(data)
     qr.make(fit=True)
     
@@ -16,5 +21,4 @@ def generate_qr_code(data):
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     buffer.seek(0)
-    
-    return ContentFile(buffer.getvalue())
+    return buffer

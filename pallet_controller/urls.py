@@ -32,9 +32,10 @@ urlpatterns = [
     path('vales/detalhes/<int:id>/', views.valepallet_detalhes, name='valepallet_detalhes'),
     path('vales/editar/<int:id>/', views.valepallet_editar, name='valepallet_editar'),
     path('vales/remover/<int:id>/', views.valepallet_remover, name='valepallet_remover'),
-    path('vales/scan/', views.scan_qr_code, name='scan_qr_code'),
-    path('vales/validar/', views.validar_qr, name='validar_qr'),
-    
+
+    # QR CODE (NOVA ROTA UNIFICADA)
+    path('valepallet/processar/<int:id>/<str:hash_seguranca>/', views.processar_scan, name='valepallet_processar'),
+
     # MOVIMENTAÇÕES
     path('movimentacoes/', views.movimentacao_listar, name='movimentacao_listar'),
     path('movimentacoes/registrar/', views.movimentacao_registrar, name='movimentacao_registrar'),
