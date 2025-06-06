@@ -5,7 +5,6 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinLengthValidator, RegexValidator
 from django.utils.translation import gettext_lazy as _
 from validate_docbr import CPF, CNPJ
-from django.conf import settings
 
 # Validações reutilizáveis
 telefone_validator = RegexValidator(
@@ -172,6 +171,7 @@ class ValePallet(models.Model):
     
     def __str__(self):
         return f"Vale {self.numero_vale} - {self.cliente.nome}"
+        
     
     @property
     def esta_vencido(self):
@@ -182,7 +182,8 @@ class ValePallet(models.Model):
     def gerar_hash(self):
         """Gera um hash seguro usando secrets"""
         self.hash_seguranca = secrets.token_hex(16)
-    
+    from django.utils import timezone
+
 class Movimentacao(models.Model):
     TIPO_CHOICES = [
         ('EMITIDO', 'Emitido'),
@@ -193,15 +194,16 @@ class Movimentacao(models.Model):
     
     vale = models.ForeignKey(ValePallet, on_delete=models.CASCADE)
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
-    data_hora = models.DateTimeField(auto_now_add=True)
+    data_hora = models.DateTimeField(auto_now_add=True)  # Mantém para registro interno
+    data_validade = models.DateTimeField(null=True)  # Obrigatório (ou use null=True se opcional)
     qtd_pbr = models.PositiveIntegerField(default=0)
     qtd_chepp = models.PositiveIntegerField(default=0)
     observacao = models.TextField(blank=True, null=True)
     responsavel = models.ForeignKey(
-        'auth.User',  # ou seu custom user model
+        'auth.User',
         on_delete=models.SET_NULL,
-        null=True,      # Permite NULL no banco de dados
-        blank=True,     # Permite campo vazio no admin/formulário
+        null=True,
+        blank=True,
     )
     
     class Meta:
@@ -213,12 +215,12 @@ class Movimentacao(models.Model):
         return f"{self.get_tipo_display()} - Vale {self.vale.numero_vale}"
     
     def save(self, *args, **kwargs):
-        if not self.pk:  # Apenas para novas movimentações
+        if not self.pk:  # Apenas na criação
             if self.tipo == 'EMITIDO':
-                self.vale.saldo_pbr += self.qtd_pbr
-                self.vale.saldo_chepp += self.qtd_chepp
-            elif self.tipo in ['SAIDA', 'RETORNO']:
-                self.vale.saldo_pbr -= self.qtd_pbr
-                self.vale.saldo_chepp -= self.qtd_chepp
+                self.vale.estado = 'EMITIDO'
+            elif self.tipo == 'SAIDA':
+                self.vale.estado = 'SAIDA'
+            elif self.tipo == 'RETORNO':
+                self.vale.estado = 'RETORNO'
             self.vale.save()
         super().save(*args, **kwargs)

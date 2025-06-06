@@ -159,7 +159,16 @@ class ValePalletForm(forms.ModelForm):
             'qtd_chepp': 'Quantidade CHEP',
         }
 
+
 class MovimentacaoForm(forms.ModelForm):
+    data_validade = forms.DateTimeField(
+        widget=forms.DateTimeInput(attrs={
+            'type': 'datetime-local',
+            'class': 'form-control'
+        }),
+        required=True
+    )
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['vale'].queryset = ValePallet.objects.filter(
@@ -172,7 +181,7 @@ class MovimentacaoForm(forms.ModelForm):
 
     class Meta:
         model = Movimentacao
-        fields = ['vale', 'tipo', 'qtd_pbr', 'qtd_chepp', 'observacao']
+        fields = ['vale', 'tipo', 'qtd_pbr', 'qtd_chepp', 'observacao', 'data_validade']
         widgets = {
             'qtd_pbr': forms.NumberInput(attrs={
                 'class': 'form-control',

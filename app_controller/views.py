@@ -251,6 +251,17 @@ def valepallet_cadastrar(request):
                     vale.hash_seguranca = get_random_string(length=32)
                     vale.save()
 
+                    Movimentacao.objects.create(
+                        vale=vale,
+                        tipo='EMITIDO',
+                        qtd_pbr=vale.qtd_pbr,
+                        qtd_chepp=vale.qtd_chepp,
+                        data_validade=vale.data_validade,  # PEGA DIRETO DO VALE
+                        responsavel=request.user if request.user.is_authenticated else None,
+                        observacao=f'Vale criado - PBR: {vale.qtd_pbr}, CHEP: {vale.qtd_chepp}'
+                    )
+
+
                     # Dados para o QR Code (formato JSON)
                     qr_data = {
                         "id": vale.id,
@@ -423,57 +434,43 @@ def movimentacao_listar(request):
 
 @transaction.atomic
 def movimentacao_registrar(request):
+    vale_id = request.GET.get('vale_id')  # Para receber o vale específico
+    
     if request.method == 'POST':
         form = MovimentacaoForm(request.POST)
         if form.is_valid():
             try:
-                movimentacao = form.save()
+                movimentacao = form.save(commit=False)
+                if request.user.is_authenticated:
+                    movimentacao.responsavel = request.user
+                
+                # Atualiza automaticamente o vale relacionado
+                if movimentacao.tipo == 'EMITIDO':
+                    movimentacao.vale.estado = 'EMITIDO'
+                elif movimentacao.tipo == 'SAIDA':
+                    movimentacao.vale.estado = 'SAIDA'
+                elif movimentacao.tipo == 'RETORNO':
+                    movimentacao.vale.estado = 'RETORNO'
+                
+                movimentacao.vale.save()
+                movimentacao.save()
+                
                 messages.success(request, 'Movimentação registrada com sucesso!')
-                return redirect('movimentacao_listar')
+                return redirect('valepallet_detalhes', id=movimentacao.vale.id)
+                
             except Exception as e:
                 logger.error(f"Erro ao registrar movimentação: {str(e)}")
-                messages.error(request, 'Erro ao registrar movimentação')
+                messages.error(request, f'Erro ao registrar movimentação: {str(e)}')
         else:
             messages.error(request, 'Por favor, corrija os erros abaixo.')
     else:
-        form = MovimentacaoForm()
+        initial = {}
+        if vale_id:
+            initial['vale'] = vale_id
+        form = MovimentacaoForm(initial=initial)
     
-    return render(request, 'cadastro/movimentacao/form.html', {
-        'form': form,
-        'titulo': 'Registrar Movimentação',
-        'url_retorno': 'movimentacao_listar'
-    })
-    
-
-
-# ===== MOVIMENTAÇÕES =====
-@require_http_methods(["GET"])
-def movimentacao_listar(request):
-    movimentacoes = Movimentacao.objects.select_related('vale').order_by('-data_hora')
     return render(request, 'cadastro/movimentacao/listar.html', {
-        'movimentacoes': movimentacoes,
-        'titulo': 'Movimentações'
-    })
-
-@transaction.atomic
-def movimentacao_registrar(request):
-    if request.method == 'POST':
-        form = MovimentacaoForm(request.POST)
-        if form.is_valid():
-            try:
-                movimentacao = form.save()
-                messages.success(request, 'Movimentação registrada com sucesso!')
-                return redirect('movimentacao_listar')
-            except Exception as e:
-                logger.error(f"Erro ao registrar movimentação: {str(e)}")
-                messages.error(request, 'Erro ao registrar movimentação')
-        else:
-            messages.error(request, 'Por favor, corrija os erros abaixo.')
-    else:
-        form = MovimentacaoForm()
-    
-    return render(request, 'cadastro/movimentacao/form.html', {
         'form': form,
         'titulo': 'Registrar Movimentação',
-        'url_retorno': 'movimentacao_listar'
+        'url_retorno': 'valepallet_listar'
     })

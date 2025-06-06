@@ -21,3 +21,4 @@ class Migration(migrations.Migration):
             field=models.CharField(choices=[('EMITIDO', 'Emitido'), ('SAIDA', 'Saida'), ('RETORNO', 'Retorno'), ('CANCELADO', 'Cancelado')], default='EMITIDO', max_length=10),
         ),
     ]
+    
