@@ -4,13 +4,126 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.core.validators import MinLengthValidator, RegexValidator
 from django.utils.translation import gettext_lazy as _
+from django.contrib.auth.models import AbstractUser, Group, Permission
 from validate_docbr import CPF, CNPJ
+
 
 # Validações reutilizáveis
 telefone_validator = RegexValidator(
     regex=r'^\(\d{2}\) \d{4,5}-\d{4}$',
     message="Formato: (XX) XXXX-XXXX ou (XX) XXXXX-XXXX"
 )
+
+
+class Usuario(AbstractUser):
+    TIPO_USUARIO_CHOICES = [
+        ('Administrador', 'Administradores'),
+        ('Cadastro', 'Cadastrados'),
+    ]
+    
+    tipo_usuario = models.CharField(
+        max_length=15,
+        choices=TIPO_USUARIO_CHOICES,
+        default='Cadastro'
+    )
+    
+    telefone = models.CharField(
+        max_length=15,
+        validators=[RegexValidator(
+            regex=r'^\(\d{2}\) \d{4,5}-\d{4}$',
+            message='Telefone deve estar no formato (00) 00000-0000'
+        )]
+    )
+    
+    # Corrigindo os conflitos de related_name
+    groups = models.ManyToManyField(
+        Group,
+        verbose_name='groups',
+        blank=True,
+        help_text='The groups this user belongs to.',
+        related_name='app_controller_usuario_set',
+        related_query_name='app_controller_usuario',
+    )
+    
+    user_permissions = models.ManyToManyField(
+        Permission,
+        verbose_name='user permissions',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        related_name='app_controller_usuario_set',
+        related_query_name='app_controller_usuario',
+    )
+    
+    class Meta:
+        verbose_name = 'Usuário'
+        verbose_name_plural = 'Usuários'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['username'],
+                name='unique_username',
+                violation_error_message='Nome de usuário já está em uso'
+            ),
+            models.UniqueConstraint(
+                fields=['email'],
+                name='unique_email',
+                violation_error_message='Email já está cadastrado'
+            )
+        ]
+
+    def __str__(self):
+        return self.username
+
+
+class PessoaJuridica(models.Model):
+    SITUACAO_CHOICES = [
+        ('Ativo', 'Ativo'),
+        ('Inativo', 'Inativo'),
+        ('Suspenso', 'Suspenso'),
+    ]
+    
+    TIPO_EMPRESA_CHOICES = [
+        ('cadastrado', 'cadastrados'),
+    ]
+    
+    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE)
+    razao_social = models.CharField(max_length=255)
+    nome_fantasia = models.CharField(max_length=255, blank=True, null=True)
+    cnpj = models.CharField(
+        max_length=18,
+        unique=True,
+        validators=[RegexValidator(
+            regex=r'^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$',
+            message='CNPJ inválido. Formato: 00.000.000/0000-00'
+        )]
+    )
+    inscricao_estadual = models.CharField(max_length=20, blank=True, null=True)
+    inscricao_municipal = models.CharField(max_length=20, blank=True, null=True)
+    iest = models.CharField(max_length=20, blank=True, null=True)
+    telefone = models.CharField(max_length=15)
+    email = models.EmailField()
+    site = models.URLField(blank=True, null=True)
+    cep = models.CharField(max_length=9)
+    logradouro = models.CharField(max_length=255)
+    numero = models.CharField(max_length=10)
+    bairro = models.CharField(max_length=100)
+    complemento = models.CharField(max_length=100, blank=True, null=True)
+    estado = models.CharField(max_length=2)
+    cidade = models.CharField(max_length=100)
+    situacao_cadastral = models.CharField(
+        max_length=10, 
+        choices=SITUACAO_CHOICES, 
+        default='Ativo'
+    )
+    tipo_empresa = models.CharField(
+        max_length=10, 
+        choices=TIPO_EMPRESA_CHOICES, 
+        blank=True, 
+        null=True
+    )
+    
+    def __str__(self):
+        return self.razao_social
+
 
 class Cliente(models.Model):
     nome = models.CharField(
@@ -34,6 +147,13 @@ class Cliente(models.Model):
         verbose_name=_("E-mail"),
         blank=True,
         null=True
+    )
+    criado_por = models.ForeignKey(
+        PessoaJuridica,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        verbose_name="Criado por"
     )
 
     class Meta:
@@ -76,6 +196,13 @@ class Motorista(models.Model):
         blank=True,
         null=True
     )
+    criado_por = models.ForeignKey(
+        PessoaJuridica,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        verbose_name="Criado por"
+    )
 
     class Meta:
         verbose_name = _("Motorista")
@@ -117,6 +244,13 @@ class Transportadora(models.Model):
         blank=True,
         null=True
     )
+    criado_por = models.ForeignKey(
+        PessoaJuridica,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        verbose_name="Criado por"
+    )
 
     class Meta:
         verbose_name = _("Transportadora")
@@ -134,6 +268,7 @@ class Transportadora(models.Model):
         cnpj = CNPJ()
         if not cnpj.validate(self.cnpj):
             raise ValidationError(_("CNPJ inválido"))
+
 
 class ValePallet(models.Model):
     ESTADO_CHOICES = [
@@ -160,10 +295,34 @@ class ValePallet(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name="Criado por"
+        verbose_name="Criado por (usuário)"
     )
+    criado_por_pj = models.ForeignKey(
+        PessoaJuridica,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        verbose_name="Criado por (PJ)"
+    )
+    usuario_saida = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vales_saida',
+        verbose_name="Usuário da saída"
+    )
+    usuario_retorno = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vales_retorno',
+        verbose_name="Usuário do retorno"
+    )
+    data_saida = models.DateTimeField(null=True, blank=True)
+    data_retorno = models.DateTimeField(null=True, blank=True)
 
-    
     class Meta:
         ordering = ['-data_emissao']
         verbose_name = 'Vale Pallet'
@@ -172,17 +331,16 @@ class ValePallet(models.Model):
     def __str__(self):
         return f"Vale {self.numero_vale} - {self.cliente.nome}"
         
-    
     @property
     def esta_vencido(self):
-        hoje = timezone.now().date()  # Pega apenas a data (ignora horário)
-        data_validade = self.data_validade.date()  # Converte data_validade para date (sem hora)
+        hoje = timezone.now().date()
+        data_validade = self.data_validade.date()
         return hoje > data_validade
     
     def gerar_hash(self):
         """Gera um hash seguro usando secrets"""
         self.hash_seguranca = secrets.token_hex(16)
-    from django.utils import timezone
+
 
 class Movimentacao(models.Model):
     TIPO_CHOICES = [
@@ -190,12 +348,13 @@ class Movimentacao(models.Model):
         ('SAIDA', 'Saida'),
         ('RETORNO', 'Retorno'),
         ('CANCELADO', 'Cancelado'),
+        ('SCAN', 'Scan QR Code'),
     ]
     
     vale = models.ForeignKey(ValePallet, on_delete=models.CASCADE)
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
-    data_hora = models.DateTimeField(auto_now_add=True)  # Mantém para registro interno
-    data_validade = models.DateTimeField(null=True)  # Obrigatório (ou use null=True se opcional)
+    data_hora = models.DateTimeField(auto_now_add=True)
+    data_validade = models.DateTimeField(null=True, blank=True)
     qtd_pbr = models.PositiveIntegerField(default=0)
     qtd_chepp = models.PositiveIntegerField(default=0)
     observacao = models.TextField(blank=True, null=True)

@@ -1,0 +1,28 @@
+        body {
+            background-color: #0b5ed7;
+        }
+        .form-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 2rem;
+            margin: 2rem auto;
+            max-width: 800px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .form-section {
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+        .form-section h4 {
+            color: #0d6efd;
+            margin-bottom: 1rem;
+        }
+        .btn-submit {
+            width: 100%;
+            padding: 0.8rem;
+            font-size: 1.1rem;
+        }
+        #cnpjFeedback, #cepFeedback {
+            color: #6c757d;
+        }

@@ -1,12 +1,12 @@
 from django.urls import path
 from app_controller import views
-from django.conf import settings
-from django.conf.urls.static import static
 
 urlpatterns = [
     
     # PÁGINA INICIAL
-    path('', views.home, name='home'),
+    path('', views.cadastrar_pessoa_juridica, name='cadastrar_pessoa_juridica'),
+    
+    path('painel/', views.painel_usuario, name='painel_usuario'),
 
     # CLIENTES
     path('clientes/', views.cliente_listar, name='cliente_listar'),
@@ -39,7 +39,10 @@ urlpatterns = [
     # MOVIMENTAÇÕES
     path('movimentacoes/', views.movimentacao_listar, name='movimentacao_listar'),
     path('movimentacoes/registrar/', views.movimentacao_registrar, name='movimentacao_registrar'),
-]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # APIs
+    path('api/validar-cnpj/', views.validar_cnpj_api, name='validar_cnpj_api'),
+    path('api/consultar-cep/', views.consultar_cep_api, name='consultar_cep_api'),
+    path('api/estados/', views.listar_estados_api, name='listar_estados_api'),
+    path('api/municipios/<str:uf>/', views.listar_municipios_api, name='listar_municipios_api'),
+]
