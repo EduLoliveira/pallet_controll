@@ -9,245 +9,253 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="stylesheet" href="{% static 'css/login.css' %}">
-    <title>Cadastro de Pessoa Jurídica</title>
-
+    <title>Gestão de Vales de Pallet</title>
 </head>
 
 <body class="d-flex flex-column min-vh-100">
+    <!-- Configuração das URLs antes de carregar o JS -->
+    <script>
+        window.URLS = {
+            validarCNPJ: "{% url 'validar_cnpj_api' %}",
+            consultarCEP: "{% url 'consultar_cep_api' %}",
+            listarEstados: "{% url 'listar_estados_api' %}",
+            listarMunicipios: "{% url 'listar_municipios_api' 'UF' %}"
+        };
+    </script>
+
     <main class="flex-grow-1 py-5">
-        <div class="container">
-            <div class="form-container">
-                <form action="{% url 'cadastrar_pessoa_juridica' %}" method="post" class="needs-validation" novalidate>
-                    {% csrf_token %}
-                    
-                    <div class="form-header mb-4">
-                        <h2>Cadastro de Pessoa Jurídica</h2>
-                        <p class="text-muted">Preencha todos os campos obrigatórios*</p>
-                    </div>
+        <div class="container-fluid px-5">
+            <div class="container">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <form method="post" action="{% url 'cadastrar_pessoa_juridica' %}" id="PessoaJuridicaForm"
+                            class="needs-validation shared-form-style" novalidate>
+                            {% csrf_token %}
 
-                    <!-- Dados do Usuário -->
-                    <div class="form-section">
-                        <h4>Dados do Representante</h4>
-                        
-                        <div class="mb-3">
-                            <label for="id_username" class="form-label">Nome de Usuário*</label>
-                            <input type="text" class="form-control" name="username" id="id_username" required
-                                data-bs-toggle="tooltip" data-bs-placement="top"
-                                title="Este será o nome de usuário para o representante acessar o sistema">
-                            <div class="invalid-feedback">Por favor, informe um nome de usuário.</div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="id_password1" class="form-label">Senha*</label>
-                                <input type="password" class="form-control" name="password1" id="id_password1" required>
-                                <div class="invalid-feedback">{{ usuario_form.password1.errors }}</div>
+                            <div class="form-header-container">
+                                <h2 class="mb-0">Cadastro da Empresa</h2>
+                                <button type="button" class="btn login-trigger-btn" id="showLoginFormBtn">Fazer
+                                    Login</button>
                             </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label for="id_password2" class="form-label">Confirme a Senha*</label>
-                                <input type="password" class="form-control" name="password2" id="id_password2" required>
-                                <div class="invalid-feedback">{{ usuario_form.password2.errors }}</div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_telefone" class="form-label">Telefone*</label>
-                            <input type="text" class="form-control" name="telefone" id="id_telefone" required
-                                placeholder="(00) 00000-0000">
-                            <div class="invalid-feedback">Por favor, informe um telefone válido.</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_email" class="form-label">Email*</label>
-                            <input type="email" class="form-control" name="email" id="id_email" required
-                                data-bs-toggle="tooltip" data-bs-placement="top"
-                                title="Este email será associado à conta do representante">
-                            <div class="invalid-feedback">Por favor, informe um email válido.</div>
-                        </div>
-                    </div>
+                            <hr>
 
-                    <!-- Dados da Empresa -->
-                    <div class="form-section">
-                        <h4>Dados da Empresa</h4>
-                        
-                        <div class="mb-3">
-                            <label for="id_razao_social" class="form-label">Razão Social*</label>
-                            <input type="text" class="form-control" name="razao_social" id="id_razao_social" required>
-                            <div class="invalid-feedback">Por favor, informe a razão social.</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_nome_fantasia" class="form-label">Nome Fantasia</label>
-                            <input type="text" class="form-control" name="nome_fantasia" id="id_nome_fantasia">
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_cnpj" class="form-label">CNPJ*</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" name="cnpj" id="id_cnpj" required
-                                    placeholder="00.000.000/0000-00">
-                                <button class="btn btn-outline-secondary" type="button" id="validar-cnpj">Validar</button>
+                            <!-- Formulário de Usuário -->
+                            <div class="mb-3">
+                                <label for="id_username" class="form-label required-field">Nome de Usuário</label>
+                                <input type="text" class="form-control" id="id_username" name="username" required>
+                                <div class="invalid-feedback">Por favor, informe um nome de usuário válido.</div>
                             </div>
-                            <div id="cnpjFeedback" class="form-text"></div>
-                            <div class="invalid-feedback">{{ pj_form.cnpj.errors }}</div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label for="id_inscricao_estadual" class="form-label">Inscrição Estadual</label>
-                                <input type="text" class="form-control" name="inscricao_estadual" id="id_inscricao_estadual">
-                            </div>
-                            
-                            <div class="col-md-4 mb-3">
-                                <label for="id_inscricao_municipal" class="form-label">Inscrição Municipal</label>
-                                <input type="text" class="form-control" name="inscricao_municipal" id="id_inscricao_municipal">
-                            </div>
-                            
-                            <div class="col-md-4 mb-3">
-                                <label for="id_iest" class="form-label">IEST</label>
-                                <input type="text" class="form-control" name="iest" id="id_iest">
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Contato -->
-                    <div class="form-section">
-                        <h4>Contato</h4>
-                        
-                        <div class="mb-3">
-                            <label for="id_telefone_empresa" class="form-label">Telefone*</label>
-                            <input type="text" class="form-control" name="telefone" id="id_telefone_empresa" required
-                                placeholder="(00) 00000-0000">
-                            <div class="invalid-feedback">Por favor, informe um telefone válido.</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_email_empresa" class="form-label">Email*</label>
-                            <input type="email" class="form-control" name="email" id="id_email_empresa" required>
-                            <div class="invalid-feedback">Por favor, informe um email válido.</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_site" class="form-label">Site</label>
-                            <input type="url" class="form-control" name="site" id="id_site" placeholder="https://">
-                        </div>
-                    </div>
-
-                    <!-- Endereço -->
-                    <div class="form-section">
-                        <h4>Endereço</h4>
-                        
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label for="id_cep" class="form-label">CEP*</label>
+                            <div class="mb-3">
+                                <label for="id_password1" class="form-label required-field">Senha</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" name="cep" id="id_cep" required
-                                        placeholder="00000-000">
-                                    <button class="btn btn-outline-secondary" type="button" id="buscar-cep">Buscar</button>
+                                    <input type="password" class="form-control" id="id_password1" name="password1"
+                                        required>
+                                    <button type="button" class="btn btn-outline-secondary password-toggle"
+                                        data-target="id_password1">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
                                 </div>
-                                <div id="cepFeedback" class="form-text"></div>
-                                <div class="invalid-feedback">{{ pj_form.cep.errors }}</div>
+                                <div id="passwordStrength" class="form-text"></div>
+                                <div class="invalid-feedback">Por favor, informe uma senha.</div>
                             </div>
-                            
-                            <div class="col-md-8 mb-3">
-                                <label for="id_logradouro" class="form-label">Logradouro*</label>
-                                <input type="text" class="form-control" name="logradouro" id="id_logradouro" required>
-                                <div class="invalid-feedback">Por favor, informe o logradouro.</div>
-                            </div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-2 mb-3">
-                                <label for="id_numero" class="form-label">Número*</label>
-                                <input type="text" class="form-control" name="numero" id="id_numero" required>
-                                <div class="invalid-feedback">Por favor, informe o número.</div>
-                            </div>
-                            
-                            <div class="col-md-5 mb-3">
-                                <label for="id_bairro" class="form-label">Bairro*</label>
-                                <input type="text" class="form-control" name="bairro" id="id_bairro" required>
-                                <div class="invalid-feedback">Por favor, informe o bairro.</div>
-                            </div>
-                            
-                            <div class="col-md-5 mb-3">
-                                <label for="id_complemento" class="form-label">Complemento</label>
-                                <input type="text" class="form-control" name="complemento" id="id_complemento">
-                            </div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="id_estado" class="form-label">Estado*</label>
-                                <select class="form-select" name="estado" id="id_estado" required>
-                                    <option value="">Selecione...</option>
-                                    {% for sigla, nome in estados %}
-                                    <option value="{{ sigla }}" {% if pj_form.estado.value == sigla %}selected{% endif %}>
-                                        {{ nome }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                                <div class="invalid-feedback">Por favor, selecione o estado.</div>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label for="id_cidade" class="form-label">Cidade*</label>
-                                <select class="form-select" name="cidade" id="id_cidade" required>
-                                    <option value="">Selecione o estado primeiro</option>
-                                    {% if pj_form.estado.value %}
-                                        {% for cidade in cidades %}
-                                        <option value="{{ cidade }}" {% if pj_form.cidade.value == cidade %}selected{% endif %}>
-                                            {{ cidade }}
-                                        </option>
-                                        {% endfor %}
-                                    {% endif %}
-                                </select>
-                                <div class="invalid-feedback">Por favor, selecione a cidade.</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Situação Cadastral -->
-                    <div class="form-section">
-                        <h4>Situação Cadastral</h4>
-                        
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="id_situacao_cadastral" class="form-label">Situação*</label>
-                                <select class="form-select" name="situacao_cadastral" id="id_situacao_cadastral" required>
-                                    {% for value, label in pj_form.fields.situacao_cadastral.choices %}
-                                    <option value="{{ value }}" {% if pj_form.situacao_cadastral.value == value %}selected{% endif %}>
-                                        {{ label }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
+                            <div class="mb-3">
+                                <label for="id_password2" class="form-label required-field">Confirme a Senha</label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="id_password2" name="password2"
+                                        required>
+                                    <button type="button" class="btn btn-outline-secondary password-toggle"
+                                        data-target="id_password2">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="invalid-feedback">As senhas não coincidem.</div>
                             </div>
                             
-                            <div class="col-md-6 mb-3">
-                                <label for="id_tipo_empresa" class="form-label">Tipo</label>
-                                <select class="form-select" name="tipo_empresa" id="id_tipo_empresa">
-                                    {% for value, label in pj_form.fields.tipo_empresa.choices %}
-                                    <option value="{{ value }}" {% if pj_form.tipo_empresa.value == value %}selected{% endif %}>
-                                        {{ label }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
+                            <div class="mb-3">
+                                <label for="id_telefone" class="form-label required-field">Telefone
+                                    Principal</label>
+                                <input type="text" class="form-control" id="id_telefone" name="telefone" required>
+                                <div class="invalid-feedback">Formato: (00) 00000-0000</div>
                             </div>
-                        </div>
-                    </div>
 
-                    <div class="d-grid gap-2 mt-4">
-                        <button type="submit" class="btn btn-primary btn-submit">
-                            <span id="submitText">Cadastrar</span>
-                            <span id="spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
-                        </button>
+                            <!-- Apenas os campos relevantes mostrados -->
+                            <div class="mb-3">
+                                <label for="id_razao_social" class="form-label required-field">Razão Social</label>
+                                <input type="text" class="form-control" id="id_razao_social" name="razao_social"
+                                    required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="id_nome_fantasia" class="form-label">Nome Fantasia</label>
+                                <input type="text" class="form-control" id="id_nome_fantasia" name="nome_fantasia">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="id_cnpj" class="form-label required-field">CNPJ</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="id_cnpj" name="cnpj" required>
+                                    <button class="btn btn-outline-secondary" type="button" id="validar-cnpj-btn">
+                                        Validar
+                                    </button>
+                                </div>
+                                <div id="cnpjFeedback" class="form-text"></div>
+                            </div>
+
+                            <!-- Campos de documentos -->
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="id_inscricao_estadual" class="form-label">Inscrição Estadual</label>
+                                    <input type="text" class="form-control" id="id_inscricao_estadual"
+                                        name="inscricao_estadual" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="id_inscricao_municipal" class="form-label">Inscrição
+                                        Municipal</label>
+                                    <input type="text" class="form-control" id="id_inscricao_municipal"
+                                        name="inscricao_municipal" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="id_iest" class="form-label">IEST</label>
+                                    <input type="text" class="form-control" id="id_iest" name="iest" required>
+                                </div>
+                            </div>
+
+                            <!-- Campos de contato -->
+                            <div class="row">
+                                <div class="mb-3">
+                                    <label for="id_email" class="form-label">Email Comercial</label>
+                                    <input type="email" class="form-control" id="id_email" name="email" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="id_site" class="form-label">Site</label>
+                                <input type="url" class="form-control" id="id_site" name="site" placeholder="https://">
+                            </div>
+
+                            <h4 class="mt-4 border-top pt-3">Endereço</h4>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="id_cep" class="form-label required-field">CEP</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="id_cep" name="cep" required>
+                                        <button class="btn btn-outline-secondary" type="button" id="buscar-cep-btn">
+                                            Buscar
+                                        </button>
+                                    </div>
+                                    <div id="cepFeedback" class="form-text"></div>
+                                    <div class="invalid-feedback">CEP inválido</div>
+                                </div>
+                                <div class="col-md-8 mb-3">
+                                    <label for="id_logradouro" class="form-label required-field">Logradouro</label>
+                                    <input type="text" class="form-control" id="id_logradouro" name="logradouro"
+                                        required>
+                                    <div class="invalid-feedback">Por favor, informe o logradouro.</div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-2 mb-3">
+                                    <label for="id_numero" class="form-label required-field">Número</label>
+                                    <input type="text" class="form-control" id="id_numero" name="numero" required>
+                                    <div class="invalid-feedback">Por favor, informe o número.</div>
+                                </div>
+                                <div class="col-md-5 mb-3">
+                                    <label for="id_bairro" class="form-label required-field">Bairro</label>
+                                    <input type="text" class="form-control" id="id_bairro" name="bairro" required>
+                                    <div class="invalid-feedback">Por favor, informe o bairro.</div>
+                                </div>
+                                <div class="col-md-5 mb-3">
+                                    <label for="id_complemento" class="form-label">Complemento</label>
+                                    <input type="text" class="form-control" id="id_complemento" name="complemento">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="id_estado" class="form-label required-field">Estado</label>
+                                    <select class="form-select" id="id_estado" name="estado" required>
+                                        <option value="" selected disabled>Carregando estados...</option>
+                                    </select>
+                                    <div class="invalid-feedback">Por favor, selecione o estado.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="id_cidade" class="form-label required-field">Cidade</label>
+                                    <select class="form-select" id="id_cidade" name="cidade" disabled required>
+                                        <option value="" selected disabled>Selecione o estado primeiro</option>
+                                    </select>
+                                    <div class="invalid-feedback">Por favor, selecione a cidade.</div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="id_situacao_cadastral" class="form-label required-field">Situação
+                                        Cadastral</label>
+                                    <select class="form-select" id="id_situacao_cadastral" name="situacao_cadastral"
+                                        required>
+                                        <option value="Ativo" selected>Ativo</option>
+                                        <option value="Inativo">Inativo</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="id_tipo_empresa" class="form-label">Tipo</label>
+                                    <select class="form-select" id="id_tipo_empresa" name="tipo_empresa">
+                                        <option value="cadastrado" selected>cadastrado</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2 mt-4">
+                                <button type="submit" class="btn btn-primary btn-submit">
+                                    <span id="submitText">Cadastrar</span>
+                                    <span id="spinner" class="spinner-border spinner-border-sm d-none"
+                                        role="status"></span>
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                </form>
+                </div>
             </div>
+        </div>
         </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/login.js' %}"></script>
+    <script>
+        // Adicione no arquivo login.js
+        document.addEventListener('DOMContentLoaded', function () {
+            // Suaviza o scroll para campos com erro
+            const form = document.getElementById('PessoaJuridicaForm');
+            if (form) {
+                form.addEventListener('invalid', function (e) {
+                    e.preventDefault();
+                    const invalidField = e.target;
+                    invalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    invalidField.focus();
+                }, true);
+            }
+
+            // Evita que o scroll do formulário afete a página toda
+            const formContainer = document.getElementById('formContainer');
+            if (formContainer) {
+                formContainer.addEventListener('wheel', function (e) {
+                    if (!formContainer.contains(e.target)) return;
+
+                    const isScrollingDown = e.deltaY > 0;
+                    const isAtTop = this.scrollTop === 0;
+                    const isAtBottom = this.scrollHeight - this.scrollTop === this.clientHeight;
+
+                    if ((isScrollingDown && isAtBottom) || (!isScrollingDown && isAtTop)) {
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+            }
+        });
+    </script>
 </body>
+
 </html>

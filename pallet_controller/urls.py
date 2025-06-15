@@ -1,11 +1,17 @@
 from django.urls import path
 from app_controller import views
+from django.urls import path
+from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.decorators import login_required
+
 
 urlpatterns = [
-    
-    # PÁGINA INICIAL
+    # AUTENTICAÇÃO (públicas)
     path('', views.cadastrar_pessoa_juridica, name='cadastrar_pessoa_juridica'),
+    path('login/', LoginView.as_view(template_name='cadastro/login.html'), name='login'),
+    path('logout/', LogoutView.as_view(), name='logout'),
     
+    # PÁGINAS PRIVADAS (protegidas por login_required)
     path('painel/', views.painel_usuario, name='painel_usuario'),
 
     # CLIENTES
@@ -41,8 +47,8 @@ urlpatterns = [
     path('movimentacoes/registrar/', views.movimentacao_registrar, name='movimentacao_registrar'),
 
     # APIs
-    path('api/validar-cnpj/', views.validar_cnpj_api, name='validar_cnpj_api'),
-    path('api/consultar-cep/', views.consultar_cep_api, name='consultar_cep_api'),
+    path('api/validarCNPJ/', views.validar_cnpj_api, name='validar_cnpj_api'),
+    path('api/consultarCEP/', views.consultar_cep_api, name='consultar_cep_api'),
     path('api/estados/', views.listar_estados_api, name='listar_estados_api'),
     path('api/municipios/<str:uf>/', views.listar_municipios_api, name='listar_municipios_api'),
 ]

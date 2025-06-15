@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils.crypto import get_random_string
 from django.db import transaction
 from django.views.decorators.http import require_http_methods, require_GET
@@ -8,59 +8,77 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth import login
-from .models import Cliente, Motorista, Transportadora, ValePallet, Movimentacao
+from .models import Cliente, Motorista, Transportadora, ValePallet, Movimentacao, PessoaJuridica, Usuario
 from .forms import ClienteForm, MotoristaForm, TransportadoraForm, ValePalletForm, MovimentacaoForm, UsuarioPJForm, PessoaJuridicaForm
 from .utils import generate_qr_code
 import logging
 import requests
+from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 
 # ==============================================
 # PÁGINA INICIAL E AUTENTICAÇÃO
-# ==============================================
-def home(request):
-    """Página inicial. Redireciona para o painel se o usuário estiver logado."""
-    if request.user.is_authenticated:
-        return redirect('painel_usuario')
-    return render(request, 'cadastro/home.html')
 
-@transaction.atomic
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def cadastrar_pessoa_juridica(request):
-    """Cadastro de Pessoa Jurídica (com usuário associado)."""
     if request.method == 'POST':
         usuario_form = UsuarioPJForm(request.POST)
         pj_form = PessoaJuridicaForm(request.POST)
         
         if usuario_form.is_valid() and pj_form.is_valid():
-            try:
-                # Salva o usuário primeiro
-                usuario = usuario_form.save(commit=False)
-                usuario.set_password(usuario_form.cleaned_data['password1'])
-                usuario.save()
-                
-                # Depois salva a Pessoa Jurídica
-                pessoa_juridica = pj_form.save(commit=False)
-                pessoa_juridica.usuario = usuario
-                pessoa_juridica.save()
-                
-                # Faz login do usuário
-                login(request, usuario)
-                messages.success(request, 'Cadastro realizado com sucesso!')
-                return redirect('painel_usuario')
-                
-            except Exception as e:
-                logger.error(f"Erro ao cadastrar Pessoa Jurídica: {str(e)}")
-                messages.error(request, 'Ocorreu um erro durante o cadastro. Por favor, tente novamente.')
+            with transaction.atomic():
+                try:
+                    # Debug: Verifique os dados recebidos
+                    print("Dados do formulário de usuário:", usuario_form.cleaned_data)
+                    print("Dados do formulário PJ:", pj_form.cleaned_data)
+                    
+                    usuario = usuario_form.save(commit=False)
+                    usuario.set_password(usuario_form.cleaned_data['password1'])
+                    usuario.save()
+                    
+                    pessoa_juridica = pj_form.save(commit=False)
+                    pessoa_juridica.usuario = usuario
+                    pessoa_juridica.save()
+                    
+                    login(request, usuario)
+                    
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({
+                            'success': True,
+                            'redirect_url': reverse('painel_usuario')
+                        })
+                    
+                    messages.success(request, 'Cadastro realizado com sucesso!')
+                    return redirect('painel_usuario')
+                    
+                except Exception as e:
+                    logger.error(f"Erro no cadastro: {str(e)}", exc_info=True)
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({
+                            'success': False,
+                            'message': str(e)
+                        }, status=500)
+                    messages.error(request, f'Erro no cadastro: {str(e)}')
         else:
-            # Adicione esta linha para ver os erros de validação no console
+            # Debug: Mostre os erros de validação
             print("Erros no formulário de usuário:", usuario_form.errors)
             print("Erros no formulário PJ:", pj_form.errors)
+            
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': False,
+                    'errors': {
+                        'usuario': usuario_form.errors.get_json_data(),
+                        'pj': pj_form.errors.get_json_data()
+                    }
+                }, status=400)
             messages.error(request, 'Por favor, corrija os erros abaixo.')
     else:
         usuario_form = UsuarioPJForm()
         pj_form = PessoaJuridicaForm()
-    
+
     return render(request, 'cadastro/login.html', {
         'usuario_form': usuario_form,
         'pj_form': pj_form,
@@ -550,14 +568,13 @@ def movimentacao_registrar(request):
         'url_retorno': 'valepallet_listar'
     })
 
-# ==============================================
-# APIs DE CONSULTA (CNPJ, CEP, etc.)
-# ==============================================
+
+# ===== APIs EXTERNAS =====
 @require_GET
 def validar_cnpj_api(request):
     cnpj = request.GET.get('cnpj', '').replace('.', '').replace('/', '').replace('-', '')
     if not cnpj.isdigit() or len(cnpj) != 14:
-        return JsonResponse({'valido': False, 'erro': 'CNPJ inválido'}, status=400)
+        return JsonResponse({'valido': False, 'erro': 'CNPJ deve ter 14 dígitos numéricos.'}, status=400)
     
     try:
         response = requests.get(f'https://receitaws.com.br/v1/cnpj/{cnpj}', timeout=10)
@@ -567,153 +584,85 @@ def validar_cnpj_api(request):
         if data.get('status') == 'ERROR':
             return JsonResponse({'valido': False, 'erro': data.get('message', 'CNPJ inválido')})
         
+        # Mapeamento completo com os prefixos conforme forms.py
         return JsonResponse({
             'valido': True,
             'DsRazaoSocial': data.get('nome', ''),
             'DsNomeFantasia': data.get('fantasia', ''),
-            'DsSituacaoCadastral': data.get('situacao', ''),
+            'DsSituacaoCadastral': data.get('situacao', 'ATIVO'),
             'DsEnderecoLogradouro': data.get('logradouro', ''),
             'NrEnderecoNumero': data.get('numero', ''),
             'DsEnderecoBairro': data.get('bairro', ''),
             'NrEnderecoCep': data.get('cep', '').replace('.', '').replace('-', ''),
             'DsEnderecoCidade': data.get('municipio', ''),
             'DsEnderecoEstado': data.get('uf', ''),
-            'DsEmail': data.get('email', '')
+            'DsEmail': data.get('email', ''),
+            'DsInscricaoEstadual': data.get('inscricao_estadual', ''),
+            'DsTelefone': data.get('telefone', ''),
+            'DsSite': data.get('site', '')
         })
     except requests.exceptions.RequestException as e:
         logger.error(f"Erro ao consultar CNPJ: {str(e)}")
-        return JsonResponse({'valido': False, 'erro': 'Serviço indisponível'}, status=503)
+        return JsonResponse({'valido': False, 'erro': 'Serviço de consulta indisponível'}, status=503)
     except Exception as e:
         logger.error(f"Erro inesperado ao validar CNPJ: {str(e)}")
-        return JsonResponse({'valido': False, 'erro': 'Erro interno'}, status=500)
-
+        return JsonResponse({'valido': False, 'erro': 'Erro interno ao processar CNPJ'}, status=500)
 
 @require_GET
 def consultar_cep_api(request):
     cep = request.GET.get('cep', '').replace('-', '')
-    
     if not cep.isdigit() or len(cep) != 8:
         return JsonResponse({'erro': 'CEP deve conter 8 dígitos numéricos.'}, status=400)
     
-    # Primeiro tentamos ViaCEP
     try:
-        viacep_response = requests.get(f'https://viacep.com.br/ws/{cep}/json/', timeout=3)
-        viacep_response.raise_for_status()
-        viacep_data = viacep_response.json()
+        response = requests.get(f'https://viacep.com.br/ws/{cep}/json/', timeout=5)
+        response.raise_for_status()
+        data = response.json()
         
-        if not viacep_data.get('erro'):
-            return JsonResponse({
-                'success': True,
-                'DsEnderecoLogradouro': viacep_data.get('logradouro', ''),
-                'DsEnderecoBairro': viacep_data.get('bairro', ''),
-                'DsEnderecoCidade': viacep_data.get('localidade', ''),
-                'DsEnderecoEstado': viacep_data.get('uf', ''),
-                'DsEnderecoComplemento': viacep_data.get('complemento', ''),
-                'api_utilizada': 'ViaCEP'
-            })
-    except requests.exceptions.RequestException as viacep_error:
-        logger.warning(f"Falha na consulta ViaCEP: {str(viacep_error)}")
-    
-    # Se ViaCEP falhar, tentamos BrasilAPI
-    try:
-        brasilapi_response = requests.get(f'https://brasilapi.com.br/api/cep/v2/{cep}', timeout=3)
-        brasilapi_response.raise_for_status()
-        brasilapi_data = brasilapi_response.json()
-        
+        if 'erro' in data:
+            return JsonResponse({'erro': 'CEP não encontrado'}, status=404)
+            
         return JsonResponse({
-            'success': True,
-            'DsEnderecoLogradouro': brasilapi_data.get('street', ''),
-            'DsEnderecoBairro': brasilapi_data.get('neighborhood', ''),
-            'DsEnderecoCidade': brasilapi_data.get('city', ''),
-            'DsEnderecoEstado': brasilapi_data.get('state', ''),
-            'DsEnderecoComplemento': brasilapi_data.get('complement', ''),
-            'api_utilizada': 'BrasilAPI'
+            'DsEnderecoLogradouro': data.get('logradouro', ''),
+            'DsEnderecoBairro': data.get('bairro', ''),
+            'DsEnderecoCidade': data.get('localidade', ''),
+            'DsEnderecoEstado': data.get('uf', ''),
+            'DsEnderecoComplemento': data.get('complemento', '')
         })
-    
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            return JsonResponse({'erro': 'CEP não encontrado em nenhuma base.'}, status=404)
-        logger.error(f"Erro BrasilAPI: {str(e)}")
-        return JsonResponse({'erro': 'Serviço de consulta retornou erro.'}, status=502)
-    
     except requests.exceptions.RequestException as e:
-        logger.error(f"Erro de conexão BrasilAPI: {str(e)}")
-        return JsonResponse({'erro': 'Não foi possível conectar aos serviços de consulta.'}, status=503)
-    
+        logger.error(f"Erro ao consultar CEP: {str(e)}")
+        return JsonResponse({'erro': 'Serviço de consulta indisponível'}, status=503)
     except Exception as e:
-        logger.error(f"Erro inesperado: {str(e)}")
-        return JsonResponse({'erro': 'Erro interno ao processar CEP.'}, status=500)
-    
+        logger.error(f"Erro inesperado ao consultar CEP: {str(e)}")
+        return JsonResponse({'erro': 'Erro interno ao processar CEP'}, status=500)
+
 @require_GET
 def listar_estados_api(request):
-    """
-    API para listar estados brasileiros usando IBGE
-    """
     try:
-        response = requests.get(
-            'https://servicodados.ibge.gov.br/api/v1/localidades/estados',
-            timeout=10
-        )
+        response = requests.get('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome', timeout=10)
         response.raise_for_status()
-        
-        estados = [{
-            'sigla': est['sigla'],
-            'nome': est['nome']
-        } for est in response.json()]
-        
-        return JsonResponse({
-            'estados': sorted(estados, key=lambda x: x['nome'])
-        })
-
+        estados = [{'sigla': est['sigla'], 'nome': est['nome']} for est in response.json()]
+        return JsonResponse({'estados': estados})
     except requests.exceptions.RequestException as e:
         logger.error(f"Erro ao listar estados: {str(e)}")
-        return JsonResponse(
-            {'error': 'Serviço indisponível'},
-            status=503
-        )
+        return JsonResponse({'erro': 'Serviço indisponível'}, status=503)
     except Exception as e:
-        logger.error(f"Erro inesperado na API de estados: {str(e)}")
-        return JsonResponse(
-            {'error': 'Erro interno no servidor'},
-            status=500
-        )
+        logger.error(f"Erro inesperado ao listar estados: {str(e)}")
+        return JsonResponse({'erro': 'Erro interno'}, status=500)
 
 @require_GET
 def listar_municipios_api(request, uf):
-    """
-    API para listar municípios por UF usando IBGE
-    """
     if not uf or len(uf) != 2:
-        return JsonResponse(
-            {'error': 'UF inválida'},
-            status=400
-        )
-
+        return JsonResponse({'erro': 'UF inválida'}, status=400)
+    
     try:
-        response = requests.get(
-            f'https://servicodados.ibge.gov.br/api/v1/localidades/estados/{uf}/municipios',
-            timeout=10
-        )
+        response = requests.get(f'https://servicodados.ibge.gov.br/api/v1/localidades/estados/{uf}/municipios', timeout=10)
         response.raise_for_status()
-        
-        municipios = [{
-            'id': mun['id'],
-            'nome': mun['nome']
-        } for mun in response.json()]
-        
-        return JsonResponse({
-            'municipios': sorted(municipios, key=lambda x: x['nome'])
-        })
-
+        municipios = [{'id': mun['id'], 'nome': mun['nome']} for mun in response.json()]
+        return JsonResponse({'municipios': municipios})
     except requests.exceptions.RequestException as e:
         logger.error(f"Erro ao listar municípios: {str(e)}")
-        return JsonResponse(
-            {'error': 'Serviço indisponível'},
-            status=503
-        )
+        return JsonResponse({'erro': 'Serviço indisponível'}, status=503)
     except Exception as e:
-        logger.error(f"Erro inesperado na API de municípios: {str(e)}")
-        return JsonResponse(
-            {'error': 'Erro interno no servidor'},
-            status=500
-        )
+        logger.error(f"Erro inesperado ao listar municípios: {str(e)}")
+        return JsonResponse({'erro': 'Erro interno'}, status=500)

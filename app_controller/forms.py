@@ -2,9 +2,7 @@ from django import forms
 from django.core.validators import RegexValidator
 from django.utils import timezone
 from .models import Cliente, Motorista, Transportadora, ValePallet, Movimentacao, Usuario, PessoaJuridica
-from django.contrib.auth.forms import UserCreationForm
 from django.core.exceptions import ValidationError
-import requests
 from django.contrib.auth import get_user_model
 
 # ===== CONSTANTES DE VALIDAÇÃO =====
@@ -13,7 +11,16 @@ CPF_REGEX = r'^\d{3}\.\d{3}\.\d{3}-\d{2}$'
 TELEFONE_REGEX = r'^\(\d{2}\) \d{5}-\d{4}$'
 
 # ===== FORMULÁRIOS PRINCIPAIS =====
-class UsuarioPJForm(UserCreationForm):
+class UsuarioPJForm(forms.ModelForm):
+    password1 = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control'}),
+        label="Senha"
+    )
+    password2 = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control'}),
+        label="Confirme a Senha"
+    )
+
     tipo_usuario = forms.ChoiceField(
         choices=Usuario.TIPO_USUARIO_CHOICES,
         initial='Cadastro',
@@ -36,7 +43,7 @@ class UsuarioPJForm(UserCreationForm):
 
     class Meta:
         model = Usuario
-        fields = ['username', 'email', 'password1', 'password2', 'telefone', 'tipo_usuario']
+        fields = ['username', 'email', 'telefone', 'tipo_usuario']
         labels = {
             'username': 'Nome de Usuário*',
             'email': 'Email do Representante*',
@@ -63,6 +70,20 @@ class UsuarioPJForm(UserCreationForm):
         if Usuario.objects.filter(email=email).exists():
             raise ValidationError('Este email já está cadastrado')
         return email
+
+    def clean_password2(self):
+        password1 = self.cleaned_data.get("password1")
+        password2 = self.cleaned_data.get("password2")
+        if password1 and password2 and password1 != password2:
+            raise ValidationError("As senhas não coincidem")
+        return password2
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.set_password(self.cleaned_data["password1"])
+        if commit:
+            user.save()
+        return user
 
 
 class PessoaJuridicaForm(forms.ModelForm):
@@ -116,7 +137,11 @@ class PessoaJuridicaForm(forms.ModelForm):
             'inscricao_municipal': forms.TextInput(attrs={'class': 'form-control'}),
             'iest': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'site': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://'}),
+            'site': forms.URLInput(attrs={
+                'class': 'form-control', 
+                'placeholder': 'https://',
+                'required': False
+            }),
             'logradouro': forms.TextInput(attrs={'class': 'form-control'}),
             'numero': forms.TextInput(attrs={'class': 'form-control'}),
             'bairro': forms.TextInput(attrs={'class': 'form-control'}),
@@ -124,7 +149,6 @@ class PessoaJuridicaForm(forms.ModelForm):
             'estado': forms.Select(attrs={
                 'class': 'form-select',
                 'id': 'estado',
-                'onchange': 'carregarCidades()'
             }),
             'cidade': forms.Select(attrs={
                 'class': 'form-select',
@@ -139,6 +163,7 @@ class PessoaJuridicaForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['tipo_empresa'].choices = [('cadastrado', 'cadastrados')]
         self.fields['tipo_empresa'].initial = 'cadastrado'
+        self.fields['site'].required = False  # Site não é obrigatório
 
     def clean_cnpj(self):
         cnpj = self.cleaned_data.get('cnpj')
@@ -156,14 +181,6 @@ class PessoaJuridicaForm(forms.ModelForm):
         razao_social = cleaned_data.get('razao_social', '')
         if len(razao_social.strip()) < 5:
             raise ValidationError({'razao_social': 'Razão Social deve ter pelo menos 5 caracteres'})
-        
-        email = cleaned_data.get('email', '')
-        site = cleaned_data.get('site', '')
-        if site and site not in email:
-            raise ValidationError({
-                'email': 'Email do representante deve ser corporativo (domínio do site)',
-                'site': 'Site da empresa deve corresponder ao domínio do email'
-            })
         
         cep = cleaned_data.get('cep', '').replace('-', '')
         if len(cep) != 8:
@@ -218,6 +235,7 @@ class ClienteForm(forms.ModelForm):
 
     class Meta:
         model = Cliente
+        exclude = ['criado_por']
         fields = ['nome', 'cnpj', 'telefone', 'email']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
@@ -227,6 +245,18 @@ class ClienteForm(forms.ModelForm):
             'nome': 'Nome Completo',
             'email': 'E-mail',
         }
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.user and hasattr(self.user, 'pessoajuridica'):
+            instance.criado_por = self.user.pessoajuridica
+        if commit:
+            instance.save()
+        return instance
 
 
 class MotoristaForm(forms.ModelForm):
@@ -254,6 +284,7 @@ class MotoristaForm(forms.ModelForm):
 
     class Meta:
         model = Motorista
+        exclude = ['criado_por']
         fields = ['nome', 'cpf', 'telefone', 'email']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
@@ -263,6 +294,19 @@ class MotoristaForm(forms.ModelForm):
             'nome': 'Nome Completo',
             'email': 'E-mail (opcional)',
         }
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.fields['email'].required = False
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.user and hasattr(self.user, 'pessoajuridica'):
+            instance.criado_por = self.user.pessoajuridica
+        if commit:
+            instance.save()
+        return instance
 
 
 class TransportadoraForm(forms.ModelForm):
@@ -290,6 +334,7 @@ class TransportadoraForm(forms.ModelForm):
 
     class Meta:
         model = Transportadora
+        exclude = ['criado_por']
         fields = ['nome', 'cnpj', 'telefone', 'email']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
@@ -300,8 +345,19 @@ class TransportadoraForm(forms.ModelForm):
             'email': 'E-mail',
         }
 
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
 
-# ===== FORMULÁRIOS DE OPERAÇÕES =====
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.user and hasattr(self.user, 'pessoajuridica'):
+            instance.criado_por = self.user.pessoajuridica
+        if commit:
+            instance.save()
+        return instance
+
+
 class ValePalletForm(forms.ModelForm):
     data_validade = forms.DateField(
         widget=forms.DateInput(attrs={
@@ -317,15 +373,10 @@ class ValePalletForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         
         if self.user and hasattr(self.user, 'pessoajuridica'):
-            self.fields['cliente'].queryset = Cliente.objects.filter(
-                criado_por=self.user.pessoajuridica
-            ).order_by('nome')
-            self.fields['motorista'].queryset = Motorista.objects.filter(
-                criado_por=self.user.pessoajuridica
-            ).order_by('nome')
-            self.fields['transportadora'].queryset = Transportadora.objects.filter(
-                criado_por=self.user.pessoajuridica
-            ).order_by('nome')
+            pj = self.user.pessoajuridica
+            self.fields['cliente'].queryset = Cliente.objects.filter(criado_por=pj).order_by('nome')
+            self.fields['motorista'].queryset = Motorista.objects.filter(criado_por=pj).order_by('nome')
+            self.fields['transportadora'].queryset = Transportadora.objects.filter(criado_por=pj).order_by('nome')
         else:
             self.fields['cliente'].queryset = Cliente.objects.none()
             self.fields['motorista'].queryset = Motorista.objects.none()
@@ -336,6 +387,7 @@ class ValePalletForm(forms.ModelForm):
 
     class Meta:
         model = ValePallet
+        exclude = ['criado_por']
         fields = ['numero_vale', 'cliente', 'motorista', 'transportadora', 
                  'data_validade', 'qtd_pbr', 'qtd_chepp']
         widgets = {
@@ -358,6 +410,14 @@ class ValePalletForm(forms.ModelForm):
             'qtd_chepp': 'Quantidade CHEP',
         }
 
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.user and hasattr(self.user, 'pessoajuridica'):
+            instance.criado_por = self.user.pessoajuridica
+        if commit:
+            instance.save()
+        return instance
+
 
 class MovimentacaoForm(forms.ModelForm):
     data_validade = forms.DateTimeField(
@@ -369,6 +429,7 @@ class MovimentacaoForm(forms.ModelForm):
     )
     
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         if 'instance' in kwargs:
             vale = kwargs['instance'].vale
@@ -385,6 +446,7 @@ class MovimentacaoForm(forms.ModelForm):
 
     class Meta:
         model = Movimentacao
+        exclude = ['criado_por']
         fields = ['vale', 'tipo', 'qtd_pbr', 'qtd_chepp', 'observacao', 'data_validade']
         widgets = {
             'vale': forms.Select(attrs={'class': 'form-select'}),
@@ -398,9 +460,21 @@ class MovimentacaoForm(forms.ModelForm):
                 'min': 0,
                 'step': 1
             }),
+            'observacao': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3
+            }),
         }
         labels = {
             'vale': 'Vale de Pallet',
             'tipo': 'Tipo de Movimentação',
             'observacao': 'Observações',
         }
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.user and hasattr(self.user, 'pessoajuridica'):
+            instance.criado_por = self.user.pessoajuridica
+        if commit:
+            instance.save()
+        return instance
