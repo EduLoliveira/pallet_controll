@@ -1,33 +1,33 @@
 from django.urls import path
 from app_controller import views
-from django.urls import path
-from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.decorators import login_required
 
 
 urlpatterns = [
-    # AUTENTICAÇÃO (públicas)
-    path('', views.cadastrar_pessoa_juridica, name='cadastrar_pessoa_juridica'),
-    path('login/', LoginView.as_view(template_name='cadastro/login.html'), name='login'),
-    path('logout/', LogoutView.as_view(), name='logout'),
-    
-    # PÁGINAS PRIVADAS (protegidas por login_required)
-    path('painel/', views.painel_usuario, name='painel_usuario'),
+    # --- SEÇÃO DE AUTENTICAÇÃO CORRIGIDA ---
+    path('', views.login, name='login'),
 
-    # CLIENTES
-    path('clientes/', views.cliente_listar, name='cliente_listar'),
+    path('logout/', views.custom_logout, name='logout'),
+    path('cadastro/', views.cadastrar_pessoa_juridica, name='cadastrar_pessoa_juridica'),
+
+    # PÁGINAS PRIVADAS (protegidas por login_required)
+    #path('painel/', views.painel_usuario, name='painel_usuario'),
+    path('painel/', login_required(views.painel_usuario), name='painel_usuario'),
+
+    # CLIENTES 
+    path('clientes/', login_required(views.cliente_listar), name='cliente_listar'),
     path('clientes/cadastrar/', views.cliente_cadastrar, name='cliente_cadastrar'),
     path('clientes/editar/<int:id>/', views.cliente_editar, name='cliente_editar'),
     path('clientes/remover/<int:id>/', views.cliente_remover, name='cliente_remover'),
     
     # MOTORISTAS
-    path('motoristas/', views.motorista_listar, name='motorista_listar'),
+    path('motoristas/', login_required(views.motorista_listar), name='motorista_listar'),
     path('motoristas/cadastrar/', views.motorista_cadastrar, name='motorista_cadastrar'),
     path('motoristas/editar/<int:id>/', views.motorista_editar, name='motorista_editar'),
     path('motoristas/remover/<int:id>/', views.motorista_remover, name='motorista_remover'),
     
     # TRANSPORTADORAS
-    path('transportadoras/', views.transportadora_listar, name='transportadora_listar'),
+    path('transportadoras/', login_required(views.transportadora_listar), name='transportadora_listar'),
     path('transportadoras/cadastrar/', views.transportadora_cadastrar, name='transportadora_cadastrar'),
     path('transportadoras/editar/<int:id>/', views.transportadora_editar, name='transportadora_editar'),
     path('transportadoras/remover/<int:id>/', views.transportadora_remover, name='transportadora_remover'),

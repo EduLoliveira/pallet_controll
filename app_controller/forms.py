@@ -129,8 +129,9 @@ class PessoaJuridicaForm(forms.ModelForm):
 
     class Meta:
         model = PessoaJuridica
-        exclude = ['usuario']
+        fields = '__all__'
         widgets = {
+            'usuario': forms.HiddenInput(),
             'razao_social': forms.TextInput(attrs={'class': 'form-control'}),
             'nome_fantasia': forms.TextInput(attrs={'class': 'form-control'}),
             'inscricao_estadual': forms.TextInput(attrs={'class': 'form-control'}),
@@ -163,7 +164,8 @@ class PessoaJuridicaForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['tipo_empresa'].choices = [('cadastrado', 'cadastrados')]
         self.fields['tipo_empresa'].initial = 'cadastrado'
-        self.fields['site'].required = False  # Site não é obrigatório
+        self.fields['site'].required = False
+        self.fields['usuario'].required = False
 
     def clean_cnpj(self):
         cnpj = self.cleaned_data.get('cnpj')
@@ -208,7 +210,6 @@ class PessoaJuridicaForm(forms.ModelForm):
                 })
         
         return cleaned_data
-
 
 class ClienteForm(forms.ModelForm):
     cnpj = forms.CharField(

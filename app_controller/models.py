@@ -6,6 +6,7 @@ from django.core.validators import MinLengthValidator, RegexValidator
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from validate_docbr import CPF, CNPJ
+from django.conf import settings
 
 
 # Validações reutilizáveis
@@ -35,7 +36,6 @@ class Usuario(AbstractUser):
         )]
     )
     
-    # Corrigindo os conflitos de related_name
     groups = models.ManyToManyField(
         Group,
         verbose_name='groups',
@@ -73,7 +73,6 @@ class Usuario(AbstractUser):
     def __str__(self):
         return self.username
 
-
 class PessoaJuridica(models.Model):
     SITUACAO_CHOICES = [
         ('Ativo', 'Ativo'),
@@ -81,11 +80,20 @@ class PessoaJuridica(models.Model):
         ('Suspenso', 'Suspenso'),
     ]
     
+    # Mantendo exatamente como estava seu TIPO_EMPRESA_CHOICES original
     TIPO_EMPRESA_CHOICES = [
         ('cadastrado', 'cadastrados'),
     ]
     
-    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE)
+    # Correção principal: relacionamento com Usuario
+    usuario = models.OneToOneField(
+        Usuario,
+        on_delete=models.CASCADE,
+        related_name='pessoa_juridica',  # Permite acessar via usuario.pessoa_juridica
+        verbose_name='Usuário responsável'
+    )
+    
+    # Todos os outros campos mantidos EXATAMENTE como no seu original
     razao_social = models.CharField(max_length=255)
     nome_fantasia = models.CharField(max_length=255, blank=True, null=True)
     cnpj = models.CharField(
@@ -291,35 +299,31 @@ class ValePallet(models.Model):
     observacoes = models.TextField(blank=True, null=True)
     hash_seguranca = models.CharField(max_length=32, unique=True, editable=False)
     criado_por = models.ForeignKey(
-        'auth.User',
+        settings.AUTH_USER_MODEL,  # Alterado de 'auth.User'
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         verbose_name="Criado por (usuário)"
     )
-    criado_por_pj = models.ForeignKey(
-        PessoaJuridica,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        verbose_name="Criado por (PJ)"
-    )
+    
     usuario_saida = models.ForeignKey(
-        'auth.User',
+        settings.AUTH_USER_MODEL,  # Alterado de 'auth.User'
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='vales_saida',
         verbose_name="Usuário da saída"
     )
+    
     usuario_retorno = models.ForeignKey(
-        'auth.User',
+        settings.AUTH_USER_MODEL,  # Alterado de 'auth.User'
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='vales_retorno',
         verbose_name="Usuário do retorno"
     )
+
     data_saida = models.DateTimeField(null=True, blank=True)
     data_retorno = models.DateTimeField(null=True, blank=True)
 
@@ -359,7 +363,7 @@ class Movimentacao(models.Model):
     qtd_chepp = models.PositiveIntegerField(default=0)
     observacao = models.TextField(blank=True, null=True)
     responsavel = models.ForeignKey(
-        'auth.User',
+        settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

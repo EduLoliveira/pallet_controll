@@ -1,5 +1,5 @@
-<!DOCTYPE html>
 {% load static %}
+<!DOCTYPE html>
 <html lang="pt-br">
 
 <head>
@@ -102,6 +102,26 @@
                     </li>
                 </ul>
 
+                <!-- Botão de Logout alinhado à direita -->
+                <div class="d-flex align-items-center ms-auto">
+                    {% if user.is_authenticated %}
+                    <div class="dropdown" style="color: white;">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle me-2" style="font-size: 1.7rem;"></i>
+                            <h5 class="mb-0">{{ user.username|upper }}</h5>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'logout' %}">
+                                    <i class="bi bi-box-arrow-right me-2" style="font-size: 1.3rem;"></i>
+                                    <span>Sair</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </nav>
@@ -169,7 +189,8 @@
                                                         aria-label="Close"></button>
                                                 </div>
                                                 <div class="modal-body">
-                                                    <p>Tem certeza que deseja remover a transportadora <strong>{{transportadora.nome }}</strong>?</p>
+                                                    <p>Tem certeza que deseja remover a transportadora
+                                                        <strong>{{transportadora.nome }}</strong>?</p>
                                                 </div>
                                                 <div class="modal-footer">
                                                     <button type="button" class="btn btn-secondary"

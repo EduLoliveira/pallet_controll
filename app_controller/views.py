@@ -4,25 +4,78 @@ from django.http import JsonResponse, HttpResponse
 from django.utils.crypto import get_random_string
 from django.db import transaction
 from django.views.decorators.http import require_http_methods, require_GET
-from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.utils import timezone
-from django.contrib.auth import login
+from django.contrib.auth import authenticate, login as auth_login, logout
 from .models import Cliente, Motorista, Transportadora, ValePallet, Movimentacao, PessoaJuridica, Usuario
 from .forms import ClienteForm, MotoristaForm, TransportadoraForm, ValePalletForm, MovimentacaoForm, UsuarioPJForm, PessoaJuridicaForm
 from .utils import generate_qr_code
 import logging
 import requests
+from django.db import IntegrityError
 from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 
+
 # ==============================================
 # PÁGINA INICIAL E AUTENTICAÇÃO
+# ==============================================
+@csrf_exempt
+def login(request):
+    """
+    View de login com logging profissional
+    """
+    if request.user.is_authenticated:
+        return redirect('painel_usuario')
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '').strip()
+
+        logger.debug(f"Tentativa de login recebida - Usuário: {username}")
+
+        if not username or not password:
+            logger.warning("Tentativa de login com campos vazios")
+            messages.error(request, 'Por favor, preencha todos os campos.')
+            return render(request, 'cadastro/login_form.html')
+
+        user = authenticate(request, username=username, password=password)
+        
+        if user is None:
+            logger.warning(f"Falha na autenticação para o usuário: {username}")
+            messages.error(request, 'Credenciais inválidas. Por favor, tente novamente.')
+            return render(request, 'cadastro/login_form.html')
+
+        # LINHA CRÍTICA ADICIONADA AQUI!
+        # Esta linha cria a sessão do usuário.
+        auth_login(request, user)
+        
+        try:
+            if not hasattr(user, 'pessoa_juridica'):
+                logger.info(f"Usuário {username} sem PessoaJuridica associada")
+                messages.warning(request, 'Conta não vinculada a uma empresa. Algumas funcionalidades podem ser limitadas.')
+        except Exception as e:
+            logger.error(f"Erro ao verificar PessoaJuridica: {str(e)}")
+        
+        logger.info(f"Login bem-sucedido para o usuário: {username}")
+        return redirect('painel_usuario')
+
+    return render(request, 'cadastro/login_form.html')
+
+
+def custom_logout(request):
+    """View personalizada para logout com redirecionamento para login"""
+    logout(request)
+    messages.success(request, 'Você foi desconectado com sucesso.')
+    return redirect('login')  # Redireciona para a URL nomeada 'login'
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def cadastrar_pessoa_juridica(request):
+    if request.user.is_authenticated:  # Impede cadastro se já logado
+        return redirect('painel_usuario')
+
     if request.method == 'POST':
         usuario_form = UsuarioPJForm(request.POST)
         pj_form = PessoaJuridicaForm(request.POST)
@@ -30,51 +83,24 @@ def cadastrar_pessoa_juridica(request):
         if usuario_form.is_valid() and pj_form.is_valid():
             with transaction.atomic():
                 try:
-                    # Debug: Verifique os dados recebidos
-                    print("Dados do formulário de usuário:", usuario_form.cleaned_data)
-                    print("Dados do formulário PJ:", pj_form.cleaned_data)
-                    
                     usuario = usuario_form.save(commit=False)
-                    usuario.set_password(usuario_form.cleaned_data['password1'])
+                    password = usuario_form.cleaned_data.get('password1')
+                    usuario.is_active = True
+                    usuario.set_password(password)
                     usuario.save()
                     
                     pessoa_juridica = pj_form.save(commit=False)
                     pessoa_juridica.usuario = usuario
                     pessoa_juridica.save()
-                    
-                    login(request, usuario)
-                    
-                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                        return JsonResponse({
-                            'success': True,
-                            'redirect_url': reverse('painel_usuario')
-                        })
-                    
-                    messages.success(request, 'Cadastro realizado com sucesso!')
-                    return redirect('painel_usuario')
-                    
+
+                    messages.success(request, 'Cadastro realizado com sucesso! Faça login para continuar.')
+                    return redirect('login')
+
+                except IntegrityError:
+                    messages.error(request, 'Este nome de usuário ou e-mail já está cadastrado.')
                 except Exception as e:
                     logger.error(f"Erro no cadastro: {str(e)}", exc_info=True)
-                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                        return JsonResponse({
-                            'success': False,
-                            'message': str(e)
-                        }, status=500)
-                    messages.error(request, f'Erro no cadastro: {str(e)}')
-        else:
-            # Debug: Mostre os erros de validação
-            print("Erros no formulário de usuário:", usuario_form.errors)
-            print("Erros no formulário PJ:", pj_form.errors)
-            
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({
-                    'success': False,
-                    'errors': {
-                        'usuario': usuario_form.errors.get_json_data(),
-                        'pj': pj_form.errors.get_json_data()
-                    }
-                }, status=400)
-            messages.error(request, 'Por favor, corrija os erros abaixo.')
+                    messages.error(request, 'Erro durante o cadastro. Tente novamente.')
     else:
         usuario_form = UsuarioPJForm()
         pj_form = PessoaJuridicaForm()
@@ -84,19 +110,17 @@ def cadastrar_pessoa_juridica(request):
         'pj_form': pj_form,
     })
 
-@login_required
 def painel_usuario(request):
     """Painel principal após login."""
     return render(request, 'cadastro/painel_usuario.html')
-
 # ==============================================
 # CRUD CLIENTES
 # ==============================================
-@login_required
+
 @require_http_methods(["GET"])
 def cliente_listar(request):
     """Lista clientes vinculados à PJ do usuário."""
-    clientes = Cliente.objects.filter(criado_por=request.user.pessoajuridica).order_by('nome')
+    clientes = Cliente.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
     return render(request, 'cadastro/cliente/listar.html', {
         'clientes': clientes,
         'titulo': 'Clientes',
@@ -104,7 +128,7 @@ def cliente_listar(request):
         'url_edicao': 'cliente_editar'
     })
 
-@login_required
+
 @require_http_methods(["GET", "POST"])
 def cliente_cadastrar(request):
     """Cadastra novo cliente."""
@@ -113,7 +137,7 @@ def cliente_cadastrar(request):
         if form.is_valid():
             try:
                 cliente = form.save(commit=False)
-                cliente.criado_por = request.user.pessoajuridica
+                cliente.criado_por = request.user.pessoa_juridica
                 cliente.save()
                 messages.success(request, 'Cliente cadastrado com sucesso!')
                 return redirect('cliente_listar')
@@ -131,11 +155,11 @@ def cliente_cadastrar(request):
         'url_retorno': 'cliente_listar'
     })
 
-@login_required
+
 @require_http_methods(["GET", "POST"])
 def cliente_editar(request, id):
     """Edita cliente existente."""
-    cliente = get_object_or_404(Cliente, pk=id, criado_por=request.user.pessoajuridica)
+    cliente = get_object_or_404(Cliente, pk=id, criado_por=request.user.pessoa_juridica)
     
     if request.method == 'POST':
         form = ClienteForm(request.POST, instance=cliente)
@@ -158,11 +182,11 @@ def cliente_editar(request, id):
         'url_retorno': 'cliente_listar'
     })
 
-@login_required
+
 @require_http_methods(["POST"])
 def cliente_remover(request, id):
     """Remove cliente (apenas POST)."""
-    cliente = get_object_or_404(Cliente, pk=id, criado_por=request.user.pessoajuridica)
+    cliente = get_object_or_404(Cliente, pk=id, criado_por=request.user.pessoa_juridica)
     try:
         cliente.delete()
         messages.success(request, 'Cliente removido com sucesso!')
@@ -174,11 +198,10 @@ def cliente_remover(request, id):
 # ==============================================
 # CRUD MOTORISTAS
 # ==============================================
-@login_required
 @require_http_methods(["GET"])
 def motorista_listar(request):
     """Lista motoristas vinculados à PJ do usuário."""
-    motoristas = Motorista.objects.filter(criado_por=request.user.pessoajuridica).order_by('nome')
+    motoristas = Motorista.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
     return render(request, 'cadastro/motorista/listar.html', {
         'motoristas': motoristas,
         'titulo': 'Motoristas',
@@ -186,7 +209,7 @@ def motorista_listar(request):
         'url_edicao': 'motorista_editar'
     })
 
-@login_required
+
 @require_http_methods(["GET", "POST"])
 def motorista_cadastrar(request):
     """Cadastra novo motorista."""
@@ -195,7 +218,7 @@ def motorista_cadastrar(request):
         if form.is_valid():
             try:
                 motorista = form.save(commit=False)
-                motorista.criado_por = request.user.pessoajuridica
+                motorista.criado_por = request.user.pessoa_juridica
                 motorista.save()
                 messages.success(request, 'Motorista cadastrado com sucesso!')
                 return redirect('motorista_listar')
@@ -213,11 +236,10 @@ def motorista_cadastrar(request):
         'url_retorno': 'motorista_listar'
     })
 
-@login_required
 @require_http_methods(["GET", "POST"])
 def motorista_editar(request, id):
     """Edita motorista existente."""
-    motorista = get_object_or_404(Motorista, pk=id, criado_por=request.user.pessoajuridica)
+    motorista = get_object_or_404(Motorista, pk=id, criado_por=request.user.pessoa_juridica)
     
     if request.method == 'POST':
         form = MotoristaForm(request.POST, instance=motorista)
@@ -240,11 +262,10 @@ def motorista_editar(request, id):
         'url_retorno': 'motorista_listar'
     })
 
-@login_required
 @require_http_methods(["POST"])
 def motorista_remover(request, id):
     """Remove motorista (apenas POST)."""
-    motorista = get_object_or_404(Motorista, pk=id, criado_por=request.user.pessoajuridica)
+    motorista = get_object_or_404(Motorista, pk=id, criado_por=request.user.pessoa_juridica)
     try:
         motorista.delete()
         messages.success(request, 'Motorista removido com sucesso!')
@@ -256,11 +277,10 @@ def motorista_remover(request, id):
 # ==============================================
 # CRUD TRANSPORTADORAS
 # ==============================================
-@login_required
 @require_http_methods(["GET"])
 def transportadora_listar(request):
     """Lista transportadoras vinculadas à PJ do usuário."""
-    transportadoras = Transportadora.objects.filter(criado_por=request.user.pessoajuridica).order_by('nome')
+    transportadoras = Transportadora.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
     return render(request, 'cadastro/transportadora/listar.html', {
         'transportadoras': transportadoras,
         'titulo': 'Transportadoras',
@@ -268,7 +288,7 @@ def transportadora_listar(request):
         'url_edicao': 'transportadora_editar'
     })
 
-@login_required
+
 @require_http_methods(["GET", "POST"])
 def transportadora_cadastrar(request):
     """Cadastra nova transportadora."""
@@ -277,7 +297,7 @@ def transportadora_cadastrar(request):
         if form.is_valid():
             try:
                 transportadora = form.save(commit=False)
-                transportadora.criado_por = request.user.pessoajuridica
+                transportadora.criado_por = request.user.pessoa_juridica
                 transportadora.save()
                 messages.success(request, 'Transportadora cadastrada com sucesso!')
                 return redirect('transportadora_listar')
@@ -295,11 +315,10 @@ def transportadora_cadastrar(request):
         'url_retorno': 'transportadora_listar'
     })
 
-@login_required
 @require_http_methods(["GET", "POST"])
 def transportadora_editar(request, id):
     """Edita transportadora existente."""
-    transportadora = get_object_or_404(Transportadora, pk=id, criado_por=request.user.pessoajuridica)
+    transportadora = get_object_or_404(Transportadora, pk=id, criado_por=request.user.pessoa_juridica)
     
     if request.method == 'POST':
         form = TransportadoraForm(request.POST, instance=transportadora)
@@ -322,11 +341,11 @@ def transportadora_editar(request, id):
         'url_retorno': 'transportadora_listar'
     })
 
-@login_required
+
 @require_http_methods(["POST"])
 def transportadora_remover(request, id):
     """Remove transportadora (apenas POST)."""
-    transportadora = get_object_or_404(Transportadora, pk=id, criado_por=request.user.pessoajuridica)
+    transportadora = get_object_or_404(Transportadora, pk=id, criado_por=request.user.pessoa_juridica)
     try:
         transportadora.delete()
         messages.success(request, 'Transportadora removida com sucesso!')
@@ -338,12 +357,11 @@ def transportadora_remover(request, id):
 # ==============================================
 # GESTÃO DE VALES PALLETS
 # ==============================================
-@login_required
 @require_http_methods(["GET"])
 def valepallet_listar(request):
     """Lista vales pallets vinculados à PJ do usuário."""
     vales = ValePallet.objects.filter(
-        criado_por_pj=request.user.pessoajuridica
+        criado_por_pj=request.user.pessoa_juridica
     ).select_related('cliente', 'motorista', 'transportadora').order_by('-data_emissao')
     return render(request, 'cadastro/valepallet/listar.html', {
         'vales': vales,
@@ -352,7 +370,7 @@ def valepallet_listar(request):
         'url_edicao': 'valepallet_editar'
     })
 
-@login_required
+
 @transaction.atomic
 @require_http_methods(["GET", "POST"])
 def valepallet_cadastrar(request):
@@ -362,7 +380,7 @@ def valepallet_cadastrar(request):
         if form.is_valid():
             try:
                 vale = form.save(commit=False)
-                vale.criado_por_pj = request.user.pessoajuridica
+                vale.criado_por_pj = request.user.pessoa_juridica
                 vale.hash_seguranca = get_random_string(32)
                 vale.save()
 
@@ -404,14 +422,13 @@ def valepallet_cadastrar(request):
         'url_retorno': 'valepallet_listar'
     })
 
-@login_required
 @require_http_methods(["GET"])
 def valepallet_detalhes(request, id):
     """Exibe detalhes de um vale pallet específico."""
     vale = get_object_or_404(
         ValePallet, 
         pk=id, 
-        criado_por_pj=request.user.pessoajuridica
+        criado_por_pj=request.user.pessoa_juridica
     )
     movimentacoes = Movimentacao.objects.filter(vale=vale).order_by('-data_hora')
     return render(request, 'cadastro/valepallet/detalhes.html', {
@@ -420,14 +437,14 @@ def valepallet_detalhes(request, id):
         'titulo': f'Detalhes do Vale {vale.numero_vale}'
     })
 
-@login_required
+
 @require_http_methods(["GET", "POST"])
 def valepallet_editar(request, id):
     """Edita vale pallet existente."""
     vale = get_object_or_404(
         ValePallet, 
         pk=id, 
-        criado_por_pj=request.user.pessoajuridica
+        criado_por_pj=request.user.pessoa_juridica
     )
     
     if request.method == 'POST':
@@ -451,14 +468,14 @@ def valepallet_editar(request, id):
         'url_retorno': 'valepallet_listar'
     })
 
-@login_required
+
 @require_http_methods(["POST"])
 def valepallet_remover(request, id):
     """Remove vale pallet (apenas POST)."""
     vale = get_object_or_404(
         ValePallet, 
         pk=id, 
-        criado_por_pj=request.user.pessoajuridica
+        criado_por_pj=request.user.pessoa_juridica
     )
     try:
         vale.delete()
@@ -468,7 +485,7 @@ def valepallet_remover(request, id):
         messages.error(request, 'Erro ao remover vale pallet')
     return redirect('valepallet_listar')
 
-@login_required
+
 @transaction.atomic
 @require_http_methods(["GET"])
 def processar_scan(request, id, hash_seguranca):
@@ -477,7 +494,7 @@ def processar_scan(request, id, hash_seguranca):
         ValePallet, 
         pk=id, 
         hash_seguranca=hash_seguranca,
-        criado_por_pj=request.user.pessoajuridica
+        criado_por_pj=request.user.pessoa_juridica
     )
     
     try:
@@ -517,19 +534,19 @@ def processar_scan(request, id, hash_seguranca):
 # ==============================================
 # GESTÃO DE MOVIMENTAÇÕES
 # ==============================================
-@login_required
+
 @require_http_methods(["GET"])
 def movimentacao_listar(request):
     """Lista todas as movimentações."""
     movimentacoes = Movimentacao.objects.filter(
-        vale__criado_por_pj=request.user.pessoajuridica
+        vale__criado_por_pj=request.user.pessoa_juridica
     ).select_related('vale', 'responsavel').order_by('-data_hora')
     return render(request, 'cadastro/movimentacao/listar.html', {
         'movimentacoes': movimentacoes,
         'titulo': 'Movimentações'
     })
 
-@login_required
+
 @transaction.atomic
 @require_http_methods(["GET", "POST"])
 def movimentacao_registrar(request):
