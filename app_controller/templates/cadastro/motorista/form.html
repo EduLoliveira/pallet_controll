@@ -94,12 +94,14 @@
                             <h5>VALES</h5>
                         </a>
                     </li>
+                    {% if user.is_staff %}
                     <li class="nav-item">
                         <a class="nav-link d-flex align-items-center" href="{% url 'movimentacao_listar' %}">
                             <i class="bi bi-arrow-left-right me-2" style="font-size: 2rem;"></i>
                             <h5>MOVIMENTAÇÕES</h5>
                         </a>
                     </li>
+                    {% endif %}
                 </ul>
 
                 <!-- Botão de Logout alinhado à direita -->

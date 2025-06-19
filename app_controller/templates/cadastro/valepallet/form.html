@@ -92,12 +92,14 @@
                             <h5>VALES</h5>
                         </a>
                     </li>
+                    {% if user.is_staff %}
                     <li class="nav-item">
                         <a class="nav-link d-flex align-items-center" href="{% url 'movimentacao_listar' %}">
                             <i class="bi bi-arrow-left-right me-2" style="font-size: 2rem;"></i>
                             <h5>MOVIMENTAÇÕES</h5>
                         </a>
                     </li>
+                    {% endif %}
                 </ul>
 
                 <!-- Botão de Logout alinhado à direita -->
@@ -129,7 +131,7 @@
         <div class="container-fluid px-5">
             <h3>VALE PALLET</h3>
             <div class="form-container">
-                <form method="post" action="" id="valePalletForm">
+                <form method="post" action="" id="ValePalletForm">
                     {% csrf_token %}
                     {{ form.non_field_errors }}
 
@@ -174,8 +176,9 @@
                                 class="form-select" required>
                                 <option value="" selected disabled>Selecione uma transportadora...</option>
                                 {% for transportadora in form.transportadora.field.queryset %}
-                                <option value="{{ transportadora.id }}">{{ transportadora.nome }} -
-                                    {{transportadora.cnpj }}</option>
+                                <option value="{{ transportadora.id }}" {% if form.transportadora.value == transportadora.id %}selected{% endif %}>
+                                    {{ transportadora.nome }} - {{ transportadora.cnpj }}
+                                </option>
                                 {% endfor %}
                             </select>
                         </div>

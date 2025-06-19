@@ -366,15 +366,16 @@ class ValePalletForm(forms.ModelForm):
             'class': 'form-control',
             'min': timezone.now().strftime('%Y-%m-%d')
         }),
-        initial=timezone.now().date()
+        initial=timezone.now().date(),
+        label="Data de Validade*"
     )
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         
-        if self.user and hasattr(self.user, 'pessoajuridica'):
-            pj = self.user.pessoajuridica
+        if self.user and hasattr(self.user, 'pessoa_juridica'):
+            pj = self.user.pessoa_juridica  # Note a mudança aqui
             self.fields['cliente'].queryset = Cliente.objects.filter(criado_por=pj).order_by('nome')
             self.fields['motorista'].queryset = Motorista.objects.filter(criado_por=pj).order_by('nome')
             self.fields['transportadora'].queryset = Transportadora.objects.filter(criado_por=pj).order_by('nome')
@@ -383,42 +384,66 @@ class ValePalletForm(forms.ModelForm):
             self.fields['motorista'].queryset = Motorista.objects.none()
             self.fields['transportadora'].queryset = Transportadora.objects.none()
         
-        for field in ['cliente', 'motorista', 'transportadora']:
-            self.fields[field].widget.attrs.update({'class': 'form-select'})
+        # Estilização dos campos
+        for field in self.fields:
+            if isinstance(self.fields[field].widget, forms.Select):
+                self.fields[field].widget.attrs.update({'class': 'form-select'})
+            else:
+                self.fields[field].widget.attrs.update({'class': 'form-control'})
 
     class Meta:
         model = ValePallet
-        exclude = ['criado_por']
         fields = ['numero_vale', 'cliente', 'motorista', 'transportadora', 
-                 'data_validade', 'qtd_pbr', 'qtd_chepp']
+                'data_validade', 'qtd_pbr', 'qtd_chepp','criado_por']
         widgets = {
-            'numero_vale': forms.TextInput(attrs={'class': 'form-control'}),
+            'numero_vale': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Número do vale'
+            }),
             'qtd_pbr': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'min': 0,
-                'step': 1
+                'step': 1,
+                'placeholder': '0'
             }),
             'qtd_chepp': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'min': 0,
-                'step': 1
+                'step': 1,
+                'placeholder': '0'
             }),
         }
-        labels = {
-            'numero_vale': 'Número do Vale',
-            'data_validade': 'Data de Validade',
-            'qtd_pbr': 'Quantidade PBR',
-            'qtd_chepp': 'Quantidade CHEP',
-        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not hasattr(self.user, 'pessoa_juridica'):
+            raise forms.ValidationError("Usuário não está associado a uma pessoa jurídica")
+        return cleaned_data
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-        if self.user and hasattr(self.user, 'pessoajuridica'):
-            instance.criado_por = self.user.pessoajuridica
-        if commit:
-            instance.save()
-        return instance
-
+        
+        # Conversão de data
+        if 'data_validade' in self.cleaned_data:
+            instance.data_validade = timezone.make_aware(
+                timezone.datetime.combine(
+                    self.cleaned_data['data_validade'], 
+                    timezone.datetime.min.time()
+                )
+            )
+        
+        # Garantir que o usuário está definido e é do tipo correto
+        if not hasattr(self, 'user') or not self.user:
+            raise ValidationError("Usuário não definido ao criar o vale")
+        
+        if not isinstance(self.user, Usuario):
+            raise ValidationError("Tipo de usuário inválido")
+        
+        if isinstance(self.user, Usuario):
+            instance.criado_por = self.user.pessoa_juridica
+            if commit:
+                instance.save()
+            return instance
 
 class MovimentacaoForm(forms.ModelForm):
     data_validade = forms.DateTimeField(
@@ -474,8 +499,8 @@ class MovimentacaoForm(forms.ModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-        if self.user and hasattr(self.user, 'pessoajuridica'):
-            instance.criado_por = self.user.pessoajuridica
+        if isinstance(self.user, Usuario):
+            instance.criado_por = self.user.pessoa_juridica
         if commit:
             instance.save()
         return instance

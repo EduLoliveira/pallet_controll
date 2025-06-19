@@ -93,12 +93,14 @@
                             <h5>VALES</h5>
                         </a>
                     </li>
+                    {% if user.is_staff %}
                     <li class="nav-item">
                         <a class="nav-link d-flex align-items-center" href="{% url 'movimentacao_listar' %}">
                             <i class="bi bi-arrow-left-right me-2" style="font-size: 2rem;"></i>
                             <h5>MOVIMENTAÇÕES</h5>
                         </a>
                     </li>
+                    {% endif %}
                 </ul>
 
                 <!-- Botão de Logout alinhado à direita -->
@@ -124,7 +126,7 @@
             </div>
         </div>
     </nav>
-    
+
     <!-- Conteúdo Principal -->
     <main class="flex-grow-1 py-5">
         <div class="container-fluid px-5">
@@ -167,11 +169,13 @@
                                                     class="btn btn-sm btn-outline-primary">
                                                     <i class="fas fa-edit"></i> Editar
                                                 </a>
+                                                {% if user.is_staff %}
                                                 <button type="button" class="btn btn-sm btn-outline-danger"
                                                     data-bs-toggle="modal"
                                                     data-bs-target="#modalRemover{{ cliente.id }}">
                                                     <i class="fas fa-trash-alt"></i> Remover
                                                 </button>
+                                                {% endif %}
                                             </div>
                                         </td>
                                     </tr>
@@ -193,12 +197,14 @@
                                                 <div class="modal-footer">
                                                     <button type="button" class="btn btn-secondary"
                                                         data-bs-dismiss="modal">Cancelar</button>
+
                                                     <form action="{% url 'cliente_remover' cliente.id %}" method="post"
                                                         class="d-inline">
                                                         {% csrf_token %}
                                                         <button type="submit" class="btn btn-danger">Confirmar
                                                             Remoção</button>
                                                     </form>
+
                                                 </div>
                                             </div>
                                         </div>

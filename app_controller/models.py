@@ -299,16 +299,18 @@ class ValePallet(models.Model):
     observacoes = models.TextField(blank=True, null=True)
     hash_seguranca = models.CharField(max_length=32, unique=True, editable=False)
     criado_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,  # Alterado de 'auth.User'
-        on_delete=models.SET_NULL,
+        PessoaJuridica,
+        db_column='criado_por',
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
-        verbose_name="Criado por (usuário)"
+        verbose_name="Criado por",
+        related_name='vales_criados'
     )
     
     usuario_saida = models.ForeignKey(
-        settings.AUTH_USER_MODEL,  # Alterado de 'auth.User'
-        on_delete=models.SET_NULL,
+        PessoaJuridica,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name='vales_saida',
@@ -316,12 +318,12 @@ class ValePallet(models.Model):
     )
     
     usuario_retorno = models.ForeignKey(
-        settings.AUTH_USER_MODEL,  # Alterado de 'auth.User'
-        on_delete=models.SET_NULL,
+        PessoaJuridica,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name='vales_retorno',
-        verbose_name="Usuário do retorno"
+        verbose_name="Usuario Retorno"
     )
 
     data_saida = models.DateTimeField(null=True, blank=True)
