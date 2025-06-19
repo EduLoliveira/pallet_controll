@@ -30,17 +30,13 @@ class Usuario(AbstractUser):
     
     telefone = models.CharField(
         max_length=15,
-        validators=[RegexValidator(
-            regex=r'^\(\d{2}\) \d{4,5}-\d{4}$',
-            message='Telefone deve estar no formato (00) 00000-0000'
-        )]
+        validators=[telefone_validator]
     )
     
     groups = models.ManyToManyField(
         Group,
         verbose_name='groups',
         blank=True,
-        help_text='The groups this user belongs to.',
         related_name='app_controller_usuario_set',
         related_query_name='app_controller_usuario',
     )
@@ -49,7 +45,6 @@ class Usuario(AbstractUser):
         Permission,
         verbose_name='user permissions',
         blank=True,
-        help_text='Specific permissions for this user.',
         related_name='app_controller_usuario_set',
         related_query_name='app_controller_usuario',
     )
@@ -60,19 +55,29 @@ class Usuario(AbstractUser):
         constraints = [
             models.UniqueConstraint(
                 fields=['username'],
-                name='unique_username',
-                violation_error_message='Nome de usuário já está em uso'
+                name='unique_username'
             ),
             models.UniqueConstraint(
                 fields=['email'],
-                name='unique_email',
-                violation_error_message='Email já está cadastrado'
+                name='unique_email'
             )
         ]
 
     def __str__(self):
         return self.username
-
+    
+    def tem_permissao_global(self):
+        """Verifica se usuário tem permissões de staff/superuser"""
+        return self.is_staff or self.is_superuser
+    
+    def pode_remover(self, objeto):
+        """Verifica se usuário pode remover um objeto específico"""
+        if self.tem_permissao_global():
+            return True
+        if hasattr(self, 'pessoa_juridica') and hasattr(objeto, 'criado_por'):
+            return objeto.criado_por == self.pessoa_juridica
+        return False
+    
 class PessoaJuridica(models.Model):
     SITUACAO_CHOICES = [
         ('Ativo', 'Ativo'),
@@ -309,7 +314,7 @@ class ValePallet(models.Model):
     )
     
     usuario_saida = models.ForeignKey(
-        PessoaJuridica,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -318,7 +323,7 @@ class ValePallet(models.Model):
     )
     
     usuario_retorno = models.ForeignKey(
-        PessoaJuridica,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -366,7 +371,7 @@ class Movimentacao(models.Model):
     observacao = models.TextField(blank=True, null=True)
     responsavel = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
     )

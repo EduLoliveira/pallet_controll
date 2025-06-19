@@ -234,6 +234,15 @@ class ClienteForm(forms.ModelForm):
         })
     )
 
+    email = forms.EmailField(
+        label="E-mail",
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'seu@email.com',
+        })
+    )
+
     class Meta:
         model = Cliente
         exclude = ['criado_por']
@@ -311,6 +320,7 @@ class MotoristaForm(forms.ModelForm):
 
 
 class TransportadoraForm(forms.ModelForm):
+    
     cnpj = forms.CharField(
         validators=[RegexValidator(
             regex=CNPJ_REGEX,
@@ -330,6 +340,15 @@ class TransportadoraForm(forms.ModelForm):
         widget=forms.TextInput(attrs={
             'class': 'form-control',
             'placeholder': '(00) 00000-0000'
+        })
+    )
+
+    email = forms.EmailField(
+        label="E-mail",
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'seu@email.com',
         })
     )
 
@@ -375,7 +394,7 @@ class ValePalletForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         
         if self.user and hasattr(self.user, 'pessoa_juridica'):
-            pj = self.user.pessoa_juridica  # Note a mudança aqui
+            pj = self.user.pessoa_juridica
             self.fields['cliente'].queryset = Cliente.objects.filter(criado_por=pj).order_by('nome')
             self.fields['motorista'].queryset = Motorista.objects.filter(criado_por=pj).order_by('nome')
             self.fields['transportadora'].queryset = Transportadora.objects.filter(criado_por=pj).order_by('nome')
@@ -396,9 +415,9 @@ class ValePalletForm(forms.ModelForm):
         fields = ['numero_vale', 'cliente', 'motorista', 'transportadora', 
                 'data_validade', 'qtd_pbr', 'qtd_chepp','criado_por']
         widgets = {
-            'numero_vale': forms.TextInput(attrs={
+            'numero_vale': forms.NumberInput(attrs={
                 'class': 'form-control',
-                'placeholder': 'Número do vale'
+                'placeholder': 'Use um Numerador para Identificar Ticket'
             }),
             'qtd_pbr': forms.NumberInput(attrs={
                 'class': 'form-control',

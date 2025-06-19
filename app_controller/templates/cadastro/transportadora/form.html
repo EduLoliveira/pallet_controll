@@ -212,25 +212,7 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
-    <script>
-        document.getElementById('TransportadoraForm').addEventListener('submit', function (e) {
-            // Validação simples do CNPJ (apenas formato)
-            const cnpj = document.getElementById('cnpj').value;
-            if (!/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(cnpj)) {
-                alert('CNPJ no formato inválido! Use 00.000.000/0000-00');
-                e.preventDefault();
-                return;
-            }
-
-            // Validação simples do telefone
-            const telefone = document.getElementById('telefone').value;
-            if (!/^\(\d{2}\) \d{5}-\d{4}$/.test(telefone)) {
-                alert('Telefone no formato inválido! Use (00) 00000-0000');
-                e.preventDefault();
-                return;
-            }
-        });
-    </script>
+    <script src="{% static 'js/cadastroMasks.js' %}"></script>
 </body>
 
 </html>

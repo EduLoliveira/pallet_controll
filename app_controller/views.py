@@ -1,6 +1,5 @@
 from django.urls import reverse
-from django.urls.exceptions import NoReverseMatch
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
@@ -17,9 +16,22 @@ import logging
 import requests
 from django.db import IntegrityError
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import user_passes_test, login_required
 
 
 logger = logging.getLogger(__name__)
+
+
+def staff_required(view_func=None, redirect_url='painel_usuario'):
+    """
+    Decorator que verifica se o usuário é staff
+    """
+    def check_staff(user):
+        return user.is_authenticated and user.is_staff
+    
+    if view_func:
+        return user_passes_test(check_staff, login_url=redirect_url)(view_func)
+    return user_passes_test(check_staff, login_url=redirect_url)
 
 
 # ==============================================
@@ -51,8 +63,6 @@ def login(request):
             messages.error(request, 'Credenciais inválidas. Por favor, tente novamente.')
             return render(request, 'cadastro/login_form.html')
 
-        # LINHA CRÍTICA ADICIONADA AQUI!
-        # Esta linha cria a sessão do usuário.
         auth_login(request, user)
         
         try:
@@ -72,12 +82,12 @@ def custom_logout(request):
     """View personalizada para logout com redirecionamento para login"""
     logout(request)
     messages.success(request, 'Você foi desconectado com sucesso.')
-    return redirect('login')  # Redireciona para a URL nomeada 'login'
+    return redirect('login')
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def cadastrar_pessoa_juridica(request):
-    if request.user.is_authenticated:  # Impede cadastro se já logado
+    if request.user.is_authenticated:
         return redirect('painel_usuario')
 
     if request.method == 'POST':
@@ -114,34 +124,45 @@ def cadastrar_pessoa_juridica(request):
         'pj_form': pj_form,
     })
 
+@login_required
 def painel_usuario(request):
     """Painel principal após login."""
-    return render(request, 'cadastro/painel_usuario.html')
+    context = {
+        'is_staff': request.user.is_staff,
+        'has_pj': hasattr(request.user, 'pessoa_juridica')
+    }
+    return render(request, 'cadastro/painel_usuario.html', context)
+
 # ==============================================
 # CRUD CLIENTES
 # ==============================================
 
+@login_required
 @require_http_methods(["GET"])
 def cliente_listar(request):
-    """Lista clientes vinculados à PJ do usuário."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    """Lista clientes - todos veem, mas staff veem mais"""
+    if request.user.is_staff:
+        clientes = Cliente.objects.all().order_by('nome')
+    elif hasattr(request.user, 'pessoa_juridica'):
+        clientes = Cliente.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
+    else:
+        messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
-        
-    clientes = Cliente.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
+    
     return render(request, 'cadastro/cliente/listar.html', {
         'clientes': clientes,
+        'is_staff': request.user.is_staff,
         'titulo': 'Clientes',
         'url_cadastro': 'cliente_cadastrar',
         'url_edicao': 'cliente_editar'
     })
 
-
+@login_required
 @require_http_methods(["GET", "POST"])
 def cliente_cadastrar(request):
     """Cadastra novo cliente."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    if not request.user.is_staff and not hasattr(request.user, 'pessoa_juridica'):
+        messages.error(request, 'Usuário não autorizado.')
         return redirect('painel_usuario')
 
     if request.method == 'POST':
@@ -149,7 +170,8 @@ def cliente_cadastrar(request):
         if form.is_valid():
             try:
                 cliente = form.save(commit=False)
-                cliente.criado_por = request.user.pessoa_juridica
+                if not request.user.is_staff:
+                    cliente.criado_por = request.user.pessoa_juridica
                 cliente.save()
                 messages.success(request, 'Cliente cadastrado com sucesso!')
                 return redirect('cliente_listar')
@@ -167,15 +189,17 @@ def cliente_cadastrar(request):
         'url_retorno': 'cliente_listar'
     })
 
-
+@login_required
 @require_http_methods(["GET", "POST"])
 def cliente_editar(request, id):
     """Edita cliente existente."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    cliente = get_object_or_404(Cliente, pk=id, criado_por=request.user.pessoa_juridica)
+    cliente = get_object_or_404(Cliente, pk=id)
+    
+    # Verifica permissão
+    if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
+                                     cliente.criado_por != request.user.pessoa_juridica):
+        messages.error(request, 'Você não tem permissão para editar este cliente.')
+        return redirect('cliente_listar')
     
     if request.method == 'POST':
         form = ClienteForm(request.POST, instance=cliente)
@@ -198,15 +222,12 @@ def cliente_editar(request, id):
         'url_retorno': 'cliente_listar'
     })
 
-
+@staff_required
 @require_http_methods(["POST"])
 def cliente_remover(request, id):
     """Remove cliente (apenas POST)."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    cliente = get_object_or_404(Cliente, pk=id, criado_por=request.user.pessoa_juridica)
+    cliente = get_object_or_404(Cliente, pk=id)
+    
     try:
         cliente.delete()
         messages.success(request, 'Cliente removido com sucesso!')
@@ -218,27 +239,32 @@ def cliente_remover(request, id):
 # ==============================================
 # CRUD MOTORISTAS
 # ==============================================
+@login_required
 @require_http_methods(["GET"])
 def motorista_listar(request):
-    """Lista motoristas vinculados à PJ do usuário."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    """Lista motoristas vinculados à PJ do usuário ou todos se staff"""
+    if request.user.is_staff:
+        motoristas = Motorista.objects.all().order_by('nome')
+    elif hasattr(request.user, 'pessoa_juridica'):
+        motoristas = Motorista.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
+    else:
+        messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
-
-    motoristas = Motorista.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
+        
     return render(request, 'cadastro/motorista/listar.html', {
         'motoristas': motoristas,
+        'is_staff': request.user.is_staff,
         'titulo': 'Motoristas',
         'url_cadastro': 'motorista_cadastrar',
         'url_edicao': 'motorista_editar'
     })
 
-
+@login_required
 @require_http_methods(["GET", "POST"])
 def motorista_cadastrar(request):
     """Cadastra novo motorista."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    if not request.user.is_staff and not hasattr(request.user, 'pessoa_juridica'):
+        messages.error(request, 'Usuário não autorizado.')
         return redirect('painel_usuario')
 
     if request.method == 'POST':
@@ -246,7 +272,8 @@ def motorista_cadastrar(request):
         if form.is_valid():
             try:
                 motorista = form.save(commit=False)
-                motorista.criado_por = request.user.pessoa_juridica
+                if not request.user.is_staff:
+                    motorista.criado_por = request.user.pessoa_juridica
                 motorista.save()
                 messages.success(request, 'Motorista cadastrado com sucesso!')
                 return redirect('motorista_listar')
@@ -264,14 +291,17 @@ def motorista_cadastrar(request):
         'url_retorno': 'motorista_listar'
     })
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def motorista_editar(request, id):
     """Edita motorista existente."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    motorista = get_object_or_404(Motorista, pk=id, criado_por=request.user.pessoa_juridica)
+    motorista = get_object_or_404(Motorista, pk=id)
+    
+    # Verifica permissão
+    if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
+                                    motorista.criado_por != request.user.pessoa_juridica):
+        messages.error(request, 'Você não tem permissão para editar este motorista.')
+        return redirect('motorista_listar')
     
     if request.method == 'POST':
         form = MotoristaForm(request.POST, instance=motorista)
@@ -294,14 +324,12 @@ def motorista_editar(request, id):
         'url_retorno': 'motorista_listar'
     })
 
+@staff_required
 @require_http_methods(["POST"])
 def motorista_remover(request, id):
     """Remove motorista (apenas POST)."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    motorista = get_object_or_404(Motorista, pk=id, criado_por=request.user.pessoa_juridica)
+    motorista = get_object_or_404(Motorista, pk=id)
+    
     try:
         motorista.delete()
         messages.success(request, 'Motorista removido com sucesso!')
@@ -313,27 +341,32 @@ def motorista_remover(request, id):
 # ==============================================
 # CRUD TRANSPORTADORAS
 # ==============================================
+@login_required
 @require_http_methods(["GET"])
 def transportadora_listar(request):
-    """Lista transportadoras vinculadas à PJ do usuário."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    """Lista transportadoras vinculadas à PJ do usuário ou todas se staff"""
+    if request.user.is_staff:
+        transportadoras = Transportadora.objects.all().order_by('nome')
+    elif hasattr(request.user, 'pessoa_juridica'):
+        transportadoras = Transportadora.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
+    else:
+        messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
-
-    transportadoras = Transportadora.objects.filter(criado_por=request.user.pessoa_juridica).order_by('nome')
+        
     return render(request, 'cadastro/transportadora/listar.html', {
         'transportadoras': transportadoras,
+        'is_staff': request.user.is_staff,
         'titulo': 'Transportadoras',
         'url_cadastro': 'transportadora_cadastrar',
         'url_edicao': 'transportadora_editar'
     })
 
-
+@login_required
 @require_http_methods(["GET", "POST"])
 def transportadora_cadastrar(request):
     """Cadastra nova transportadora."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    if not request.user.is_staff and not hasattr(request.user, 'pessoa_juridica'):
+        messages.error(request, 'Usuário não autorizado.')
         return redirect('painel_usuario')
 
     if request.method == 'POST':
@@ -341,7 +374,8 @@ def transportadora_cadastrar(request):
         if form.is_valid():
             try:
                 transportadora = form.save(commit=False)
-                transportadora.criado_por = request.user.pessoa_juridica
+                if not request.user.is_staff:
+                    transportadora.criado_por = request.user.pessoa_juridica
                 transportadora.save()
                 messages.success(request, 'Transportadora cadastrada com sucesso!')
                 return redirect('transportadora_listar')
@@ -359,14 +393,17 @@ def transportadora_cadastrar(request):
         'url_retorno': 'transportadora_listar'
     })
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def transportadora_editar(request, id):
     """Edita transportadora existente."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    transportadora = get_object_or_404(Transportadora, pk=id, criado_por=request.user.pessoa_juridica)
+    transportadora = get_object_or_404(Transportadora, pk=id)
+    
+    # Verifica permissão
+    if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
+                                     transportadora.criado_por != request.user.pessoa_juridica):
+        messages.error(request, 'Você não tem permissão para editar esta transportadora.')
+        return redirect('transportadora_listar')
     
     if request.method == 'POST':
         form = TransportadoraForm(request.POST, instance=transportadora)
@@ -389,15 +426,12 @@ def transportadora_editar(request, id):
         'url_retorno': 'transportadora_listar'
     })
 
-
+@staff_required
 @require_http_methods(["POST"])
 def transportadora_remover(request, id):
     """Remove transportadora (apenas POST)."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    transportadora = get_object_or_404(Transportadora, pk=id, criado_por=request.user.pessoa_juridica)
+    transportadora = get_object_or_404(Transportadora, pk=id)
+    
     try:
         transportadora.delete()
         messages.success(request, 'Transportadora removida com sucesso!')
@@ -409,109 +443,114 @@ def transportadora_remover(request, id):
 # ==============================================
 # GESTÃO DE VALES PALLETS
 # ==============================================
+@login_required
 @require_http_methods(["GET"])
 def valepallet_listar(request):
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    """Lista vales - todos veem, mas staff veem mais"""
+    if request.user.is_staff:
+        vales = ValePallet.objects.all().select_related(
+            'cliente', 'motorista', 'transportadora', 'criado_por'
+        )
+    elif hasattr(request.user, 'pessoa_juridica'):
+        vales = ValePallet.objects.filter(
+            criado_por=request.user.pessoa_juridica
+        ).select_related('cliente', 'motorista', 'transportadora')
+    else:
+        messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
-
-    vales = ValePallet.objects.filter(
-        criado_por=request.user.pessoa_juridica
-    ).select_related('cliente', 'motorista', 'transportadora')
     
     return render(request, 'cadastro/valepallet/listar.html', {
         'vales': vales,
+        'is_staff': request.user.is_staff,
         'titulo': 'Vales Pallets',
         'url_cadastro': 'valepallet_cadastrar',
         'url_edicao': 'valepallet_editar'
     })
 
 @transaction.atomic
+@login_required
 @require_http_methods(["GET", "POST"])
 def valepallet_cadastrar(request):
     """Cadastra novo vale pallet com tratamento robusto de erros."""
-    if not request.user.is_authenticated:
-        messages.error(request, 'Acesso negado. Faça login para continuar.')
-        return redirect('login')
-
-    try:
-        if not isinstance(request.user, Usuario) or not hasattr(request.user, 'pessoa_juridica'):
-            messages.error(request, 'Seu usuário não está configurado corretamente ou não está vinculado a uma empresa.')
-            return redirect('painel_usuario')
-
-        if request.method == 'POST':
-            form = ValePalletForm(request.POST, user=request.user)
-            if not form.is_valid():
-                messages.error(request, 'Por favor, corrija os erros no formulário.')
-                return render(request, 'cadastro/valepallet/form.html', {
-                    'form': form,
-                    'titulo': 'Novo Vale Pallet',
-                    'url_retorno': 'valepallet_listar'
-                })
-
-            try:
-                with transaction.atomic():
-                    vale = form.save(commit=False)
-                    vale.criado_por = request.user.pessoa_juridica  # Garante o criado_por
-                    vale.hash_seguranca = get_random_string(32)
-                    vale.estado = 'EMITIDO'
-                    vale.save()
-
-                    # Criar movimentação
-                    Movimentacao.objects.create(
-                        vale=vale,
-                        tipo='EMITIDO',
-                        qtd_pbr=vale.qtd_pbr,
-                        qtd_chepp=vale.qtd_chepp,
-                        responsavel=request.user,
-                        observacao=f'Vale {vale.numero_vale} criado'
-                    )
-
-                    # Gerar QR Code
-                    try:
-                        scan_url = request.build_absolute_uri(
-                            reverse('valepallet_processar', args=[vale.id, vale.hash_seguranca])
-                        )
-                        qr_data = {
-                            "id": vale.id,
-                            "hash": vale.hash_seguranca,
-                            "numero_vale": vale.numero_vale,
-                            "url": scan_url
-                        }
-                        qr_code = generate_qr_code(qr_data)
-                        
-                        if qr_code:
-                            from django.core.files.base import ContentFile
-                            from io import BytesIO
-                            
-                            # Salvar o QR code corretamente
-                            filename = f'vale_{vale.id}_{vale.numero_vale}.png'
-                            file_content = ContentFile(qr_code.getvalue())
-                            vale.qr_code.save(filename, file_content, save=True)
-                            logger.info(f"QR code gerado e salvo para vale {vale.id}")
-                        else:
-                            logger.error("Falha na geração do QR code")
-                            messages.warning(request, 'Vale criado, mas o QR code não foi gerado')
-                    except Exception as e:
-                        logger.error(f"Erro ao gerar QR code: {str(e)}", exc_info=True)
-                        messages.warning(request, 'Erro ao gerar QR code. O vale foi criado, mas sem QR code.')
-
-                    messages.success(request, 'Vale pallet criado com sucesso!')
-                    return redirect('valepallet_detalhes', id=vale.id)  # Redirecionamento corrigido
-
-            except IntegrityError as e:
-                logger.error(f"Erro de integridade: {str(e)}")
-                messages.error(request, 'Erro: Já existe um vale com esses dados.')
-            except Exception as e:
-                logger.error(f"Erro inesperado: {str(e)}", exc_info=True)
-                messages.error(request, 'Erro ao criar o vale pallet.')
-        else:
-            form = ValePalletForm(user=request.user)
-
-    except Exception as e:
-        logger.critical(f"Erro crítico: {str(e)}", exc_info=True)
-        messages.error(request, 'Falha no sistema. Tente novamente.')
+    if not request.user.is_staff and not hasattr(request.user, 'pessoa_juridica'):
+        messages.error(request, 'Usuário não autorizado.')
         return redirect('painel_usuario')
+
+    if request.method == 'POST':
+        form = ValePalletForm(request.POST, user=request.user)
+        if not form.is_valid():
+            messages.error(request, 'Por favor, corrija os erros no formulário.')
+            return render(request, 'cadastro/valepallet/form.html', {
+                'form': form,
+                'titulo': 'Novo Vale Pallet',
+                'url_retorno': 'valepallet_listar'
+            })
+
+        try:
+            with transaction.atomic():
+                vale = form.save(commit=False)
+                if not request.user.is_staff:
+                    vale.criado_por = request.user.pessoa_juridica
+                vale.hash_seguranca = get_random_string(32)
+                vale.estado = 'EMITIDO'
+                vale.save()
+
+                # Criar movimentação
+                Movimentacao.objects.create(
+                    vale=vale,
+                    tipo='EMITIDO',
+                    qtd_pbr=vale.qtd_pbr,
+                    qtd_chepp=vale.qtd_chepp,
+                    responsavel=request.user,
+                    observacao=f'Vale {vale.numero_vale} criado'
+                )
+
+                # Gerar QR Code
+                try:
+                    scan_url = request.build_absolute_uri(
+                        reverse('valepallet_processar', args=[vale.id, vale.hash_seguranca])
+                    )
+                    qr_data = {
+                        "id": vale.id,
+                        "hash": vale.hash_seguranca,
+                        "numero_vale": vale.numero_vale,
+                        "url": scan_url
+                    }
+                    qr_code = generate_qr_code(qr_data)
+                    
+                    if qr_code:
+                        from django.core.files.base import ContentFile
+                        from io import BytesIO
+                        
+                        filename = f'vale_{vale.id}_{vale.numero_vale}.png'
+                        file_content = ContentFile(qr_code.getvalue())
+                        vale.qr_code.save(filename, file_content, save=True)
+                        logger.info(f"QR code gerado e salvo para vale {vale.id}")
+                    else:
+                        logger.error("Falha na geração do QR code")
+                        messages.warning(request, 'Vale criado, mas o QR code não foi gerado')
+                except Exception as e:
+                    logger.error(f"Erro ao gerar QR code: {str(e)}", exc_info=True)
+                    messages.warning(request, 'Erro ao gerar QR code. O vale foi criado, mas sem QR code.')
+
+                messages.success(request, 'Vale pallet criado com sucesso!')
+                return redirect('valepallet_detalhes', id=vale.id)
+
+        except IntegrityError as e:
+            logger.error(f"Erro de integridade: {str(e)}")
+            messages.error(request, 'Erro: Já existe um vale com esses dados.')
+        except Exception as e:
+            logger.error(f"Erro inesperado: {str(e)}", exc_info=True)
+            messages.error(request, 'Erro ao criar o vale pallet.')
+    else:
+        # Cria o formulário com o usuário atual
+        form = ValePalletForm(user=request.user)
+        
+        # Se for staff, remove quaisquer filtros que possam limitar as opções
+        if request.user.is_staff:
+            form.fields['cliente'].queryset = Cliente.objects.all()
+            form.fields['motorista'].queryset = Motorista.objects.all()
+            form.fields['transportadora'].queryset = Transportadora.objects.all()
 
     return render(request, 'cadastro/valepallet/form.html', {
         'form': form,
@@ -519,14 +558,11 @@ def valepallet_cadastrar(request):
         'url_retorno': 'valepallet_listar'
     })
 
+@login_required
 @require_http_methods(["GET"])
 def valepallet_detalhes(request, id):
     """Exibe detalhes de um vale pallet específico."""
     try:
-        if not request.user.is_authenticated:
-            messages.error(request, 'Acesso negado. Faça login para continuar.')
-            return redirect('login')
-
         vale = get_object_or_404(
             ValePallet.objects.select_related(
                 'cliente', 
@@ -538,7 +574,8 @@ def valepallet_detalhes(request, id):
         )
 
         # Verificação de permissão
-        if hasattr(request.user, 'pessoa_juridica') and vale.criado_por != request.user.pessoa_juridica:
+        if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
+                                        vale.criado_por != request.user.pessoa_juridica):
             messages.error(request, 'Você não tem permissão para acessar este vale.')
             return redirect('valepallet_listar')
 
@@ -552,7 +589,8 @@ def valepallet_detalhes(request, id):
             'movimentacoes': movimentacoes,
             'qr_code_url': qr_code_url,
             'titulo': f'Detalhes do Vale {vale.numero_vale}',
-            'pode_editar': hasattr(request.user, 'pessoa_juridica') and vale.criado_por == request.user.pessoa_juridica
+            'pode_editar': request.user.is_staff or (hasattr(request.user, 'pessoa_juridica') and 
+                                                    vale.criado_por == request.user.pessoa_juridica)
         }
 
         return render(request, 'cadastro/valepallet/detalhes.html', context)
@@ -563,18 +601,17 @@ def valepallet_detalhes(request, id):
         return redirect('valepallet_listar')
 
 @transaction.atomic
+@login_required
 @require_http_methods(["GET", "POST"])
 def valepallet_editar(request, id):
     """Edita vale pallet existente."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    vale = get_object_or_404(
-        ValePallet, 
-        pk=id, 
-        criado_por=request.user
-    )
+    vale = get_object_or_404(ValePallet, pk=id)
+    
+    # Verifica permissão
+    if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
+                                     vale.criado_por != request.user.pessoa_juridica):
+        messages.error(request, 'Você não tem permissão para editar este vale.')
+        return redirect('valepallet_listar')
     
     if request.method == 'POST':
         form = ValePalletForm(request.POST, instance=vale, user=request.user)
@@ -598,31 +635,23 @@ def valepallet_editar(request, id):
         'url_retorno': 'valepallet_listar'
     })
 
-
 @transaction.atomic
+@staff_required
 @require_http_methods(["POST"])
 def valepallet_remover(request, id):
     """Remove vale pallet (apenas POST)."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
-        return redirect('painel_usuario')
-
-    vale = get_object_or_404(
-        ValePallet, 
-        pk=id, 
-        criado_por=request.user
-    )
+    vale = get_object_or_404(ValePallet, pk=id)
+    
     try:
-        with transaction.atomic():
-            vale.delete()
-            messages.success(request, f'Vale {vale.numero_vale} removido com sucesso!')
+        vale.delete()
+        messages.success(request, f'Vale {vale.numero_vale} removido com sucesso!')
     except Exception as e:
         logger.error(f"Erro ao remover vale pallet: {str(e)}")
         messages.error(request, 'Erro ao remover vale pallet')
     return redirect('valepallet_listar')
 
-
 @transaction.atomic
+@login_required
 @require_http_methods(["GET"])
 def processar_scan(request, id, hash_seguranca):
     """Processa o scan do QR Code (muda estado do vale)."""
@@ -635,13 +664,17 @@ def processar_scan(request, id, hash_seguranca):
             vale = get_object_or_404(
                 ValePallet, 
                 pk=id, 
-                hash_seguranca=hash_seguranca,
-                criado_por=request.user
+                hash_seguranca=hash_seguranca
             )
+            
+            # Verifica se o usuário tem permissão
+            if not request.user.is_staff and vale.criado_por != request.user.pessoa_juridica:
+                messages.error(request, 'Você não tem permissão para processar este vale.')
+                return redirect('valepallet_listar')
             
             if vale.estado == 'EMITIDO':
                 vale.estado = 'SAIDA'
-                vale.usuario_saida = request.user.pessoa_juridica
+                vale.usuario_saida = request.user 
                 vale.data_saida = timezone.now()
                 vale.save()
                 Movimentacao.objects.create(
@@ -654,7 +687,7 @@ def processar_scan(request, id, hash_seguranca):
 
             elif vale.estado == 'SAIDA':
                 vale.estado = 'RETORNO'
-                vale.usuario_retorno = request.user.pessoa_juridica
+                vale.usuario_retorno = request.user 
                 vale.data_retorno = timezone.now()
                 vale.save()
                 Movimentacao.objects.create(
@@ -668,36 +701,41 @@ def processar_scan(request, id, hash_seguranca):
             return redirect('valepallet_detalhes', id=vale.id)
 
     except Exception as e:
-        logger.error(f"Erro ao processar QR Code: {str(e)}")
+        logger.error(f"Erro ao processar QR Code: {str(e)}", exc_info=True)
         messages.error(request, 'Erro no processamento do QR Code')
         return redirect('valepallet_listar')
-
+    
 # ==============================================
 # GESTÃO DE MOVIMENTAÇÕES
 # ==============================================
 
+@login_required
 @require_http_methods(["GET"])
 def movimentacao_listar(request):
     """Lista todas as movimentações."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    if request.user.is_staff:
+        movimentacoes = Movimentacao.objects.all().select_related('vale', 'responsavel').order_by('-data_hora')
+    elif hasattr(request.user, 'pessoa_juridica'):
+        movimentacoes = Movimentacao.objects.filter(
+            vale__criado_por=request.user.pessoa_juridica
+        ).select_related('vale', 'responsavel').order_by('-data_hora')
+    else:
+        messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
-
-    movimentacoes = Movimentacao.objects.filter(
-        vale__criado_por=request.user
-    ).select_related('vale', 'responsavel').order_by('-data_hora')
+        
     return render(request, 'cadastro/movimentacao/listar.html', {
         'movimentacoes': movimentacoes,
-        'titulo': 'Movimentações'
+        'titulo': 'Movimentações',
+        'is_staff': request.user.is_staff
     })
 
-
 @transaction.atomic
+@login_required
 @require_http_methods(["GET", "POST"])
 def movimentacao_registrar(request):
     """Registra nova movimentação manualmente."""
-    if not hasattr(request.user, 'pessoa_juridica'):
-        messages.error(request, 'Usuário não vinculado a uma empresa.')
+    if not request.user.is_staff and not hasattr(request.user, 'pessoa_juridica'):
+        messages.error(request, 'Usuário não autorizado.')
         return redirect('painel_usuario')
 
     vale_id = request.GET.get('vale_id')
@@ -708,6 +746,12 @@ def movimentacao_registrar(request):
             try:
                 movimentacao = form.save(commit=False)
                 movimentacao.responsavel = request.user
+                
+                # Verifica permissão para o vale associado
+                if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
+                                               movimentacao.vale.criado_por != request.user.pessoa_juridica):
+                    messages.error(request, 'Você não tem permissão para registrar movimentação neste vale.')
+                    return redirect('movimentacao_listar')
                 
                 # Atualiza estado do vale se necessário
                 if movimentacao.tipo in ['SAIDA', 'RETORNO']:

@@ -19,19 +19,14 @@ urlpatterns = [
     path('clientes/', login_required(views.cliente_listar), name='cliente_listar'),
     path('clientes/cadastrar/', login_required(views.cliente_cadastrar), name='cliente_cadastrar'),
     path('clientes/editar/<int:id>/', login_required(views.cliente_editar), name='cliente_editar'),
-
-    #admin_required or is_staff (administradores)
-    path('clientes/remover/<int:id>/', views.cliente_remover, name='cliente_remover'),
-    
+    path('clientes/remover/<int:id>/', views.staff_required(views.cliente_remover), name='cliente_remover'),
 
     # MOTORISTAS
     #Login_required (cadastrados)
     path('motoristas/', login_required(views.motorista_listar), name='motorista_listar'),
     path('motoristas/cadastrar/', login_required(views.motorista_cadastrar), name='motorista_cadastrar'),
     path('motoristas/editar/<int:id>/', login_required(views.motorista_editar), name='motorista_editar'),
-
-    #admin_required or is_staff (administradores)
-    path('motoristas/remover/<int:id>/', views.motorista_remover, name='motorista_remover'),
+    path('motoristas/remover/<int:id>/', views.staff_required(views.motorista_remover), name='motorista_remover'),
     
 
     # TRANSPORTADORAS 
@@ -39,9 +34,7 @@ urlpatterns = [
     path('transportadoras/', login_required(views.transportadora_listar), name='transportadora_listar'),
     path('transportadoras/cadastrar/', login_required(views.transportadora_cadastrar), name='transportadora_cadastrar'),
     path('transportadoras/editar/<int:id>/', login_required(views.transportadora_editar), name='transportadora_editar'),
-    
-    #admin_required or is_staff (administradores)
-    path('transportadoras/remover/<int:id>/', views.transportadora_remover, name='transportadora_remover'),
+    path('transportadoras/remover/<int:id>/', views.staff_required(views.transportadora_remover), name='transportadora_remover'),
     
     
     # VALE PALLET
@@ -50,20 +43,13 @@ urlpatterns = [
     path('vales/cadastrar/', login_required(views.valepallet_cadastrar), name='valepallet_cadastrar'),
     path('vales/detalhes/<int:id>/', login_required(views.valepallet_detalhes), name='valepallet_detalhes'),
     path('vales/editar/<int:id>/', login_required(views.valepallet_editar), name='valepallet_editar'),
-
-    #admin_required or is_staff (administradores)
-    path('vales/remover/<int:id>/', views.valepallet_remover, name='valepallet_remover'),
-
-    
-    # QR CODE (NOVA ROTA UNIFICADA)
-    #admin_required or is_staff (administradores)
-    path('valepallet/processar/<int:id>/<str:hash_seguranca>/', views.processar_scan, name='valepallet_processar'),
+    path('vales/remover/<int:id>/', views.staff_required(views.valepallet_remover), name='valepallet_remover'),
+    path('valepallet/processar/<int:id>/<str:hash_seguranca>/', views.staff_required(views.processar_scan), name='valepallet_processar'),
 
     # MOVIMENTAÇÕES
-    #admin_required or is_staff (administradores)
-    path('movimentacoes/', views.movimentacao_listar, name='movimentacao_listar'),
-    path('movimentacoes/registrar/', views.movimentacao_registrar, name='movimentacao_registrar'),
-
+    path('movimentacoes/', views.staff_required(views.movimentacao_listar), name='movimentacao_listar'),
+    path('movimentacoes/registrar/', views.staff_required(views.movimentacao_registrar), name='movimentacao_registrar'),
+    
     # APIs
     path('api/validarCNPJ/', views.validar_cnpj_api, name='validar_cnpj_api'),
     path('api/consultarCEP/', views.consultar_cep_api, name='consultar_cep_api'),
