@@ -393,12 +393,12 @@ class ValePalletForm(forms.ModelForm):
         self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         
-        if self.user and hasattr(self.user, 'pessoa_juridica'):
-            pj = self.user.pessoa_juridica
+        if self.user and hasattr(self.user, 'pessoa_juridica'): 
+            pj = self.user.pessoa_juridica #Aqui é para usuarios PJ
             self.fields['cliente'].queryset = Cliente.objects.filter(criado_por=pj).order_by('nome')
             self.fields['motorista'].queryset = Motorista.objects.filter(criado_por=pj).order_by('nome')
             self.fields['transportadora'].queryset = Transportadora.objects.filter(criado_por=pj).order_by('nome')
-        else:
+        else: 
             self.fields['cliente'].queryset = Cliente.objects.none()
             self.fields['motorista'].queryset = Motorista.objects.none()
             self.fields['transportadora'].queryset = Transportadora.objects.none()

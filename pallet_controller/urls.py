@@ -48,7 +48,6 @@ urlpatterns = [
 
     # MOVIMENTAÇÕES
     path('movimentacoes/', views.staff_required(views.movimentacao_listar), name='movimentacao_listar'),
-    path('movimentacoes/registrar/', views.staff_required(views.movimentacao_registrar), name='movimentacao_registrar'),
     
     # APIs
     path('api/validarCNPJ/', views.validar_cnpj_api, name='validar_cnpj_api'),

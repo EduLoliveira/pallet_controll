@@ -3,28 +3,45 @@
 // ==============================================
 function setupValidations() {
     // Validação de senha
-    const password1 = document.getElementById('id_password1'); //
-    const password2 = document.getElementById('id_password2'); //
-    const strengthIndicator = document.getElementById('passwordStrength'); //
+    const password1 = document.getElementById('id_password1');
+    const password2 = document.getElementById('id_password2');
+    const strengthIndicator = document.getElementById('passwordStrength');
 
-    if (password1 && password2) { //
-        password1.addEventListener('input', function () { //
-            validatePassword(); //
-            validatePasswordStrength(); //
+    if (password1 && password2) {
+        password1.addEventListener('input', function() {
+            validatePassword();
+            validatePasswordStrength();
         });
 
-        password2.addEventListener('input', validatePassword); //
+        password2.addEventListener('input', validatePassword);
     }
 
     // Validação do formulário
-    const form = document.getElementById('PessoaJuridicaForm'); //
-    if (form) { //
-        form.addEventListener('submit', function (event) { //
-            if (!form.checkValidity()) { //
-                event.preventDefault(); //
-                event.stopPropagation(); //
+    const form = document.getElementById('PessoaJuridicaForm');
+    if (form) {
+        form.addEventListener('submit', function(event) {
+            // Primeiro verifica a validação padrão do formulário
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                event.stopPropagation();
+                form.classList.add('was-validated');
+                return;
             }
-            form.classList.add('was-validated'); //
+
+            // Agora verifica a força da senha
+            const password = document.getElementById('id_password1').value;
+            const strength = checkPasswordStrength(password);
+            
+            // Consideramos senha forte apenas quando for class="text-success"
+            if (strength.class !== 'text-success') {
+                event.preventDefault();
+                event.stopPropagation();
+                alert('Você deve inserir uma senha forte para prosseguir!\n\nRequisitos:\n- Mínimo 8 caracteres\n- Pelo menos 1 número\n- Pelo menos 1 letra maiúscula\n- Pelo menos 1 letra minúscula\n- Pelo menos 1 caractere especial');
+                return;
+            }
+
+            // Se chegou aqui, a senha é forte e o formulário é válido
+            form.classList.add('was-validated');
         }, false);
     }
 }

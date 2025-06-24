@@ -17,6 +17,8 @@ import requests
 from django.db import IntegrityError
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import user_passes_test, login_required
+from django.db.models import Q, Count, Sum
+from datetime import timedelta
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,6 @@ def staff_required(view_func=None, redirect_url='painel_usuario'):
     if view_func:
         return user_passes_test(check_staff, login_url=redirect_url)(view_func)
     return user_passes_test(check_staff, login_url=redirect_url)
-
 
 # ==============================================
 # PÁGINA INICIAL E AUTENTICAÇÃO
@@ -478,6 +479,15 @@ def valepallet_cadastrar(request):
 
     if request.method == 'POST':
         form = ValePalletForm(request.POST, user=request.user)
+        
+        # Configura os querysets para o staff
+        if request.user.is_staff:
+            form.fields['cliente'].queryset = Cliente.objects.all().order_by('nome')
+            form.fields['motorista'].queryset = Motorista.objects.all().order_by('nome')
+            form.fields['transportadora'].queryset = Transportadora.objects.all().order_by('nome')
+            form.fields['criado_por'].queryset = PessoaJuridica.objects.all().order_by('razao_social')
+            form.fields['criado_por'].required = False
+
         if not form.is_valid():
             messages.error(request, 'Por favor, corrija os erros no formulário.')
             return render(request, 'cadastro/valepallet/form.html', {
@@ -489,13 +499,24 @@ def valepallet_cadastrar(request):
         try:
             with transaction.atomic():
                 vale = form.save(commit=False)
+                
+                # Gera um hash único
+                hash_gerado = get_random_string(32)
+                while ValePallet.objects.filter(hash_seguranca=hash_gerado).exists():
+                    hash_gerado = get_random_string(32)
+                
+                vale.hash_seguranca = hash_gerado
+                
                 if not request.user.is_staff:
                     vale.criado_por = request.user.pessoa_juridica
-                vale.hash_seguranca = get_random_string(32)
-                vale.estado = 'EMITIDO'
+                    vale.estado = 'EMITIDO'
+                else:
+                    # Para staff, criado_por pode ser None ou o valor selecionado
+                    if not form.cleaned_data.get('criado_por'):
+                        vale.criado_por = None
+                
                 vale.save()
 
-                # Criar movimentação
                 Movimentacao.objects.create(
                     vale=vale,
                     tipo='EMITIDO',
@@ -525,12 +546,8 @@ def valepallet_cadastrar(request):
                         filename = f'vale_{vale.id}_{vale.numero_vale}.png'
                         file_content = ContentFile(qr_code.getvalue())
                         vale.qr_code.save(filename, file_content, save=True)
-                        logger.info(f"QR code gerado e salvo para vale {vale.id}")
-                    else:
-                        logger.error("Falha na geração do QR code")
-                        messages.warning(request, 'Vale criado, mas o QR code não foi gerado')
                 except Exception as e:
-                    logger.error(f"Erro ao gerar QR code: {str(e)}", exc_info=True)
+                    logger.error(f"Erro ao gerar QR code: {str(e)}")
                     messages.warning(request, 'Erro ao gerar QR code. O vale foi criado, mas sem QR code.')
 
                 messages.success(request, 'Vale pallet criado com sucesso!')
@@ -538,25 +555,32 @@ def valepallet_cadastrar(request):
 
         except IntegrityError as e:
             logger.error(f"Erro de integridade: {str(e)}")
-            messages.error(request, 'Erro: Já existe um vale com esses dados.')
+            messages.error(request, 'Erro ao criar o vale. Por favor, tente novamente.')
         except Exception as e:
-            logger.error(f"Erro inesperado: {str(e)}", exc_info=True)
+            logger.error(f"Erro inesperado: {str(e)}")
             messages.error(request, 'Erro ao criar o vale pallet.')
     else:
-        # Cria o formulário com o usuário atual
         form = ValePalletForm(user=request.user)
         
-        # Se for staff, remove quaisquer filtros que possam limitar as opções
+        # Configura os querysets baseado no tipo de usuário
         if request.user.is_staff:
-            form.fields['cliente'].queryset = Cliente.objects.all()
-            form.fields['motorista'].queryset = Motorista.objects.all()
-            form.fields['transportadora'].queryset = Transportadora.objects.all()
+            form.fields['cliente'].queryset = Cliente.objects.all().order_by('nome')
+            form.fields['motorista'].queryset = Motorista.objects.all().order_by('nome')
+            form.fields['transportadora'].queryset = Transportadora.objects.all().order_by('nome')
+            form.fields['criado_por'].queryset = PessoaJuridica.objects.all().order_by('razao_social')
+            form.fields['criado_por'].required = False
+        elif hasattr(request.user, 'pessoa_juridica'):
+            pj = request.user.pessoa_juridica
+            form.fields['cliente'].queryset = Cliente.objects.filter(criado_por=pj).order_by('nome')
+            form.fields['motorista'].queryset = Motorista.objects.filter(criado_por=pj).order_by('nome')
+            form.fields['transportadora'].queryset = Transportadora.objects.filter(criado_por=pj).order_by('nome')
 
     return render(request, 'cadastro/valepallet/form.html', {
         'form': form,
         'titulo': 'Novo Vale Pallet',
         'url_retorno': 'valepallet_listar'
     })
+
 
 @login_required
 @require_http_methods(["GET"])
@@ -600,6 +624,7 @@ def valepallet_detalhes(request, id):
         messages.error(request, 'Erro ao carregar detalhes do vale')
         return redirect('valepallet_listar')
 
+
 @transaction.atomic
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -615,9 +640,23 @@ def valepallet_editar(request, id):
     
     if request.method == 'POST':
         form = ValePalletForm(request.POST, instance=vale, user=request.user)
+        
+        # Configura os querysets para o staff
+        if request.user.is_staff:
+            form.fields['cliente'].queryset = Cliente.objects.all().order_by('nome')
+            form.fields['motorista'].queryset = Motorista.objects.all().order_by('nome')
+            form.fields['transportadora'].queryset = Transportadora.objects.all().order_by('nome')
+            form.fields['criado_por'].queryset = PessoaJuridica.objects.all().order_by('razao_social')
+            form.fields['criado_por'].required = False
+
         if form.is_valid():
             try:
                 with transaction.atomic():
+                    if request.user.is_staff:
+                        # Para staff, criado_por pode ser None ou o valor selecionado
+                        if not form.cleaned_data.get('criado_por'):
+                            vale.criado_por = None
+                    
                     form.save()
                     messages.success(request, f'Vale {vale.numero_vale} atualizado com sucesso!')
                 return redirect('valepallet_detalhes', id=vale.id)
@@ -628,12 +667,26 @@ def valepallet_editar(request, id):
             messages.error(request, 'Por favor, corrija os erros abaixo.')
     else:
         form = ValePalletForm(instance=vale, user=request.user)
+        
+        # Configura os querysets baseado no tipo de usuário
+        if request.user.is_staff:
+            form.fields['cliente'].queryset = Cliente.objects.all().order_by('nome')
+            form.fields['motorista'].queryset = Motorista.objects.all().order_by('nome')
+            form.fields['transportadora'].queryset = Transportadora.objects.all().order_by('nome')
+            form.fields['criado_por'].queryset = PessoaJuridica.objects.all().order_by('razao_social')
+            form.fields['criado_por'].required = False
+        elif hasattr(request.user, 'pessoa_juridica'):
+            pj = request.user.pessoa_juridica
+            form.fields['cliente'].queryset = Cliente.objects.filter(criado_por=pj).order_by('nome')
+            form.fields['motorista'].queryset = Motorista.objects.filter(criado_por=pj).order_by('nome')
+            form.fields['transportadora'].queryset = Transportadora.objects.filter(criado_por=pj).order_by('nome')
     
     return render(request, 'cadastro/valepallet/form.html', {
         'form': form,
         'titulo': f'Editar Vale {vale.numero_vale}',
         'url_retorno': 'valepallet_listar'
     })
+
 
 @transaction.atomic
 @staff_required
@@ -708,25 +761,139 @@ def processar_scan(request, id, hash_seguranca):
 # ==============================================
 # GESTÃO DE MOVIMENTAÇÕES
 # ==============================================
-
 @login_required
 @require_http_methods(["GET"])
 def movimentacao_listar(request):
-    """Lista todas as movimentações."""
+    """Lista todas as movimentações e exibe o dashboard de pallets."""
+    # Consulta básica de movimentações
     if request.user.is_staff:
         movimentacoes = Movimentacao.objects.all().select_related('vale', 'responsavel').order_by('-data_hora')
+        vales = ValePallet.objects.all()
     elif hasattr(request.user, 'pessoa_juridica'):
         movimentacoes = Movimentacao.objects.filter(
             vale__criado_por=request.user.pessoa_juridica
         ).select_related('vale', 'responsavel').order_by('-data_hora')
+        vales = ValePallet.objects.filter(criado_por=request.user.pessoa_juridica)
     else:
         messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
-        
+
+    # Data atual para cálculos
+    hoje = timezone.now().date()
+    data_limite_vencer = hoje + timedelta(days=30)
+
+    # Métricas de status
+    # A vencer: vales com saída e que vencem em até 30 dias
+    a_vencer = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True,
+        data_validade__range=[hoje, data_limite_vencer]
+    ).count()
+    
+    # Coletado: vales com saída e retorno registrados
+    coletado = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=False
+    ).count()
+    
+    # Pendente: vales emitidos mas sem saída
+    pendente = vales.filter(
+        data_saida__isnull=True
+    ).count()
+    
+    # Vencido: vales com saída mas sem retorno e data de validade passada
+    vencido = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True,
+        data_validade__lt=hoje
+    ).count()
+
+    # Métricas de pallets
+    # Pallets em movimentação (com saída mas sem retorno)
+    pallets_movimentacao = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True
+    ).aggregate(
+        total=Sum('qtd_pbr')
+    )['total'] or 0
+    
+    # Pallets no prazo (pendentes ou dentro da validade)
+    pallets_prazo = vales.filter(
+        Q(data_saida__isnull=True) |  # Pendentes
+        (Q(data_saida__isnull=False) & Q(data_retorno__isnull=True) & Q(data_validade__gte=hoje))  # Em movimento mas dentro do prazo
+    ).aggregate(
+        total=Sum('qtd_pbr')
+    )['total'] or 0
+    
+    # Pallets vencidos (com saída, sem retorno e data vencida)
+    pallets_vencidos = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True,
+        data_validade__lt=hoje
+    ).aggregate(
+        total=Sum('qtd_pbr')
+    )['total'] or 0
+    
+    # Total de pallets
+    total_pallets = vales.aggregate(
+        total=Sum('qtd_pbr')
+    )['total'] or 0
+
+    # Dias em aberto
+    menos_30_dias = vales.filter(
+        data_emissao__gte=hoje - timedelta(days=30)
+    ).count()
+    
+    mais_30_dias = vales.filter(
+        data_emissao__lt=hoje - timedelta(days=30),
+        data_emissao__gte=hoje - timedelta(days=90)
+    ).count()
+    
+    mais_90_dias = vales.filter(
+        data_emissao__lt=hoje - timedelta(days=90),
+        data_emissao__gte=hoje - timedelta(days=180)
+    ).count()
+    
+    mais_180_dias = vales.filter(
+        data_emissao__lt=hoje - timedelta(days=180)
+    ).count()
+
+    # Agregação por fornecedor (usuário responsável)
+    fornecedores_data = movimentacoes.values(
+        'responsavel__username'
+    ).annotate(
+        total_vales=Count('vale', distinct=True),
+        total_pallets=Sum('vale__qtd_pbr')
+    ).order_by('responsavel__username')
+
+    total_fornecedores = {
+        'vales': sum(item['total_vales'] for item in fornecedores_data),
+        'pallets': sum(item['total_pallets'] for item in fornecedores_data)
+    }
+
     return render(request, 'cadastro/movimentacao/listar.html', {
         'movimentacoes': movimentacoes,
         'titulo': 'Movimentações',
-        'is_staff': request.user.is_staff
+        'is_staff': request.user.is_staff,
+        
+        # Métricas para o dashboard
+        'a_vencer': a_vencer,
+        'coletado': coletado,
+        'pendente': pendente,
+        'vencido': vencido,
+        
+        'pallets_movimentacao': pallets_movimentacao,
+        'pallets_prazo': pallets_prazo,
+        'pallets_vencidos': pallets_vencidos,
+        'total_pallets': total_pallets,
+        
+        'menos_30_dias': menos_30_dias,
+        'mais_30_dias': mais_30_dias,
+        'mais_90_dias': mais_90_dias,
+        'mais_180_dias': mais_180_dias,
+        
+        'fornecedores_data': fornecedores_data,
+        'total_fornecedores': total_fornecedores
     })
 
 @transaction.atomic
