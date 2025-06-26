@@ -41,11 +41,6 @@ Etapas para Rodar e usar o Codigo:
 - pip install django psycopg2-binary requests validate-docbr qrcode[pil] python-dotenv supabase
 - pip install -r requirements.txt
 
-1. python manage.py makemigrations
-2. python manage.py migrate
-3. python manage.py runserver
-
-
 - Fluxo de Cadastro e Acesso ✅ 
 Cadastro:
 Usuários realizam o cadastro através da área "Cadastre-se".
@@ -57,4 +52,3 @@ O sistema mantém a sessão ativa até que o usuário execute o logout manualmen
 Permissões de Usuário Comum:
 Usuários autenticados têm acesso a funcionalidades de Create, Read e Update nos módulos autorizados.
 Todas as ações realizadas por estes usuários são registradas no banco de dados, atribuindo o campo "criado_por" com o ID da Pessoa Jurídica (usuário responsável).
-===========================================================================================

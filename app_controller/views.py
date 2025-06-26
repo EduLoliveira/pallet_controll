@@ -513,7 +513,7 @@ def valepallet_cadastrar(request):
                 else:
                     # Para staff, criado_por pode ser None ou o valor selecionado
                     if not form.cleaned_data.get('criado_por'):
-                        vale.criado_por = None
+                        vale.criado_por = request.user.pessoa_juridica
                 
                 vale.save()
 

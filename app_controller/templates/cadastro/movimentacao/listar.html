@@ -182,12 +182,12 @@
                     <div class="card-body">
                         <!-- Filtros -->
                         <div class="mb-4">
-                            <div class="btn-group" role="group">
-                                <button type="button" class="btn btn-outline-primary active">Todos</button>
-                                <button type="button" class="btn btn-outline-primary">A vencer</button>
-                                <button type="button" class="btn btn-outline-primary">No prazo</button>
-                                <button type="button" class="btn btn-outline-primary">Vencidos</button>
-                                <button type="button" class="btn btn-outline-primary">Em movimentação</button>
+                            <div class="btn-group" role="group" id="filtros-botoes">
+                                <button type="button" class="btn btn-outline-primary active" data-filtro="todos">Todos</button>
+                                <button type="button" class="btn btn-outline-primary" data-filtro="a_vencer">A vencer</button>
+                                <button type="button" class="btn btn-outline-primary" data-filtro="no_prazo">No prazo</button>
+                                <button type="button" class="btn btn-outline-primary" data-filtro="vencidos">Vencidos</button>
+                                <button type="button" class="btn btn-outline-primary" data-filtro="movimentacao">Em movimentação</button>
                             </div>
                         </div>
 
@@ -346,51 +346,51 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- Dias em Aberto -->
-                            <div class="row">
-                                <div class="col-md-3 mb-3">
-                                    <div class="card status-card h-100">
-                                        <div class="card-body text-center">
-                                            <h5 class="card-title">&lt;30 dias em aberto</h5>
-                                            <div class="value-display text-primary">{{ menos_30_dias|default:"0" }}
-                                            </div>
-                                        </div>
+                        <!-- Dias em Aberto -->
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <div class="card status-card h-100">
+                                    <div class="card-body text-center">
+                                        <h5 class="card-title">&lt;30 dias em aberto</h5>
+                                        <div class="value-display text-primary">{{ menos_30_dias|default:"0" }}</div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="col-md-3 mb-3">
-                                    <div class="card status-card h-100">
-                                        <div class="card-body text-center">
-                                            <h5 class="card-title">&gt;30 dias em aberto</h5>
-                                            <div class="value-display text-warning">{{ mais_30_dias|default:"0" }}</div>
-                                        </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="card status-card h-100">
+                                    <div class="card-body text-center">
+                                        <h5 class="card-title">&gt;30 dias em aberto</h5>
+                                        <div class="value-display text-warning">{{ mais_30_dias|default:"0" }}</div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="col-md-3 mb-3">
-                                    <div class="card status-card h-100">
-                                        <div class="card-body text-center">
-                                            <h5 class="card-title">&gt;90 dias em aberto</h5>
-                                            <div class="value-display text-orange">{{ mais_90_dias|default:"0" }}</div>
-                                        </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="card status-card h-100">
+                                    <div class="card-body text-center">
+                                        <h5 class="card-title">&gt;90 dias em aberto</h5>
+                                        <div class="value-display text-orange">{{ mais_90_dias|default:"0" }}</div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="col-md-3 mb-3">
-                                    <div class="card status-card h-100">
-                                        <div class="card-body text-center">
-                                            <h5 class="card-title">&gt;180 dias em aberto</h5>
-                                            <div class="value-display text-danger">{{ mais_180_dias|default:"0" }}</div>
-                                        </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="card status-card h-100">
+                                    <div class="card-body text-center">
+                                        <h5 class="card-title">&gt;180 dias em aberto</h5>
+                                        <div class="value-display text-danger">{{ mais_180_dias|default:"0" }}</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                {% endblock %}
             </div>
+            {% endblock %}
+        </div>
     </main>
 
     <!-- Footer -->
@@ -413,6 +413,110 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
 
-</body>
+    <script>
+        // Função para inicializar o gráfico
+        function initChart() {
+            const ctx = document.getElementById('clientesChart');
+            
+            // Verifica se o elemento existe
+            if (!ctx) return;
+            
+            // Destrói o gráfico existente se houver
+            if (ctx.chart) {
+                ctx.chart.destroy();
+            }
+            
+            // Dados de exemplo - substitua pelos seus dados reais
+            const chartData = {
+                labels: [], // Preencher com nomes dos clientes
+                datasets: [{
+                    label: 'Pallets por Cliente',
+                    data: [], // Preencher com quantidades
+                    backgroundColor: 'rgba(13, 110, 253, 0.7)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                }]
+            };
 
+            // Você pode preencher os dados do gráfico a partir do Django:
+            // Exemplo: {% for cliente in clientes_data %}
+            // chartData.labels.push('{{ cliente.nome }}');
+            // chartData.datasets[0].data.push({{ cliente.total_pallets }});
+            // {% endfor %}
+
+            // Cria o gráfico
+            ctx.chart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Função para lidar com os filtros
+        function setupFiltros() {
+            const botoes = document.querySelectorAll('#filtros-botoes button');
+            
+            botoes.forEach(botao => {
+                botao.addEventListener('click', function() {
+                    // Remove a classe active de todos os botões
+                    botoes.forEach(btn => btn.classList.remove('active'));
+                    
+                    // Adiciona a classe active apenas ao botão clicado
+                    this.classList.add('active');
+                    
+                    // Obtém o tipo de filtro
+                    const filtro = this.getAttribute('data-filtro');
+                    
+                    // Aqui você pode implementar a lógica de filtro
+                    // Pode ser via AJAX ou filtrando dados já carregados
+                    console.log('Filtrando por:', filtro);
+                    
+                    // Exemplo de implementação:
+                    // filterDashboardData(filtro);
+                });
+            });
+        }
+
+        // Função para filtrar os dados (exemplo)
+        function filterDashboardData(filtro) {
+            // Esta função precisaria ser implementada conforme sua necessidade
+            // Pode fazer uma requisição AJAX para obter dados filtrados
+            // Ou filtrar os dados já carregados na página
+            
+            console.log('Aplicando filtro:', filtro);
+            // Implementação real dependerá da sua arquitetura
+        }
+
+        // Função para atualizar o ano no footer
+        function updateYear() {
+            const yearElement = document.getElementById('current-year');
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+        }
+
+        // Inicialização quando o DOM estiver carregado
+        document.addEventListener('DOMContentLoaded', function() {
+            initChart();
+            setupFiltros();
+            updateYear();
+        });
+    </script>
+</body>
 </html>
