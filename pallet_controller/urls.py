@@ -48,6 +48,8 @@ urlpatterns = [
 
     # MOVIMENTAÇÕES
     path('movimentacoes/', views.staff_required(views.movimentacao_listar), name='movimentacao_listar'),
+    path('movimentacoes/filtrar/', views.staff_required(views.movimentacoes_filtrar), name='movimentacoes_filtrar'),
+    path('dashboard/filtrar/', views.dashboard_filtrar, name='dashboard_filtrar'),
     
     # APIs
     path('api/validarCNPJ/', views.validar_cnpj_api, name='validar_cnpj_api'),
@@ -55,4 +57,4 @@ urlpatterns = [
     path('api/estados/', views.listar_estados_api, name='listar_estados_api'),
     path('api/municipios/<str:uf>/', views.listar_municipios_api, name='listar_municipios_api'),
     
-]  + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT) + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

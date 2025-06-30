@@ -51,7 +51,7 @@ ROOT_URLCONF = 'pallet_controller.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-          'DIRS': [os.path.join(BASE_DIR, 'templates')],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -83,8 +83,6 @@ DATABASES = {
         'PORT': '5432',
     }
 }
-
-AUTH_USER_MODEL = 'app_controller.Usuario'
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
@@ -137,8 +135,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'static') # Para desenvolvimento
-
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]  # Para desenvolvimento
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')    # Para produção
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 

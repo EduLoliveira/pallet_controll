@@ -17,9 +17,10 @@ import requests
 from django.db import IntegrityError
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import user_passes_test, login_required
-from django.db.models import Q, Count, Sum
+from django.db.models import F, Q, Count, Sum
 from datetime import timedelta
-
+import datetime
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -635,8 +636,19 @@ def valepallet_editar(request, id):
     # Verifica permissão
     if not request.user.is_staff and (not hasattr(request.user, 'pessoa_juridica') or 
                                      vale.criado_por != request.user.pessoa_juridica):
-        messages.error(request, 'Você não tem permissão para editar este vale.')
+        messages.error(request, '❌ Você não tem permissão para editar este vale.')
         return redirect('valepallet_listar')
+    
+    # Verifica se o vale está em estado SAIDA ou RETORNO
+    if vale.estado == 'SAIDA':
+        messages.error(request, '❌ Não é possível editar um vale que já foi marcado como SAÍDA. ' +
+                      'Apenas o registro de RETORNO via scan é permitido.')
+        return redirect('valepallet_detalhes', id=vale.id)
+    elif vale.estado == 'RETORNO':
+        messages.error(request, '❌ Não é possível editar um vale que já foi completado (RETORNO).')
+        return redirect('valepallet_detalhes', id=vale.id)
+    
+    # Restante do código da view...
     
     if request.method == 'POST':
         form = ValePalletForm(request.POST, instance=vale, user=request.user)
@@ -703,6 +715,7 @@ def valepallet_remover(request, id):
         messages.error(request, 'Erro ao remover vale pallet')
     return redirect('valepallet_listar')
 
+
 @transaction.atomic
 @login_required
 @require_http_methods(["GET"])
@@ -757,6 +770,7 @@ def processar_scan(request, id, hash_seguranca):
         logger.error(f"Erro ao processar QR Code: {str(e)}", exc_info=True)
         messages.error(request, 'Erro no processamento do QR Code')
         return redirect('valepallet_listar')
+
     
 # ==============================================
 # GESTÃO DE MOVIMENTAÇÕES
@@ -765,81 +779,68 @@ def processar_scan(request, id, hash_seguranca):
 @require_http_methods(["GET"])
 def movimentacao_listar(request):
     """Lista todas as movimentações e exibe o dashboard de pallets."""
-    # Consulta básica de movimentações
+    # Consulta básica de vales
     if request.user.is_staff:
-        movimentacoes = Movimentacao.objects.all().select_related('vale', 'responsavel').order_by('-data_hora')
-        vales = ValePallet.objects.all()
+        vales = ValePallet.objects.all().select_related('cliente', 'criado_por__usuario')
     elif hasattr(request.user, 'pessoa_juridica'):
-        movimentacoes = Movimentacao.objects.filter(
-            vale__criado_por=request.user.pessoa_juridica
-        ).select_related('vale', 'responsavel').order_by('-data_hora')
-        vales = ValePallet.objects.filter(criado_por=request.user.pessoa_juridica)
+        vales = ValePallet.objects.filter(
+            criado_por=request.user.pessoa_juridica
+        ).select_related('cliente', 'criado_por__usuario')
     else:
         messages.error(request, 'Acesso não autorizado')
         return redirect('painel_usuario')
 
     # Data atual para cálculos
     hoje = timezone.now().date()
-    data_limite_vencer = hoje + timedelta(days=30)
 
-    # Métricas de status
-    # A vencer: vales com saída e que vencem em até 30 dias
+    # Métricas de status - agora usando apenas a data_validade específica
     a_vencer = vales.filter(
         data_saida__isnull=False,
         data_retorno__isnull=True,
-        data_validade__range=[hoje, data_limite_vencer]
+        data_validade__gte=hoje  # Todos que ainda não venceram
     ).count()
     
-    # Coletado: vales com saída e retorno registrados
     coletado = vales.filter(
         data_saida__isnull=False,
         data_retorno__isnull=False
     ).count()
     
-    # Pendente: vales emitidos mas sem saída
     pendente = vales.filter(
         data_saida__isnull=True
     ).count()
     
-    # Vencido: vales com saída mas sem retorno e data de validade passada
     vencido = vales.filter(
         data_saida__isnull=False,
         data_retorno__isnull=True,
-        data_validade__lt=hoje
+        data_validade__lt=hoje  # Vencidos
     ).count()
 
+    # Função auxiliar para calcular a soma de pallets
+    def calcular_pallets(queryset):
+        return queryset.aggregate(
+            total=Sum(F('qtd_pbr') + F('qtd_chepp'))
+        )['total'] or 0
+
     # Métricas de pallets
-    # Pallets em movimentação (com saída mas sem retorno)
-    pallets_movimentacao = vales.filter(
+    pallets_movimentacao = calcular_pallets(vales.filter(
         data_saida__isnull=False,
         data_retorno__isnull=True
-    ).aggregate(
-        total=Sum('qtd_pbr')
-    )['total'] or 0
+    ))
     
-    # Pallets no prazo (pendentes ou dentro da validade)
-    pallets_prazo = vales.filter(
-        Q(data_saida__isnull=True) |  # Pendentes
-        (Q(data_saida__isnull=False) & Q(data_retorno__isnull=True) & Q(data_validade__gte=hoje))  # Em movimento mas dentro do prazo
-    ).aggregate(
-        total=Sum('qtd_pbr')
-    )['total'] or 0
+    pallets_prazo = calcular_pallets(vales.filter(
+        Q(data_saida__isnull=True) |
+        (Q(data_saida__isnull=False) & Q(data_retorno__isnull=True) & Q(data_validade__gte=hoje))
+    ))
     
-    # Pallets vencidos (com saída, sem retorno e data vencida)
-    pallets_vencidos = vales.filter(
+    pallets_vencidos = calcular_pallets(vales.filter(
         data_saida__isnull=False,
         data_retorno__isnull=True,
         data_validade__lt=hoje
-    ).aggregate(
-        total=Sum('qtd_pbr')
-    )['total'] or 0
+    ))
     
-    # Total de pallets
-    total_pallets = vales.aggregate(
-        total=Sum('qtd_pbr')
-    )['total'] or 0
+    total_pallets = calcular_pallets(vales)
 
-    # Dias em aberto
+    # Dias em aberto (baseado na data_emissao)
     menos_30_dias = vales.filter(
         data_emissao__gte=hoje - timedelta(days=30)
     ).count()
@@ -858,21 +859,46 @@ def movimentacao_listar(request):
         data_emissao__lt=hoje - timedelta(days=180)
     ).count()
 
-    # Agregação por fornecedor (usuário responsável)
-    fornecedores_data = movimentacoes.values(
-        'responsavel__username'
+    # Agregação por fornecedor (TOP 3 por quantidade de pallets)
+    fornecedores_data = vales.values(
+        'criado_por__usuario__username'
     ).annotate(
-        total_vales=Count('vale', distinct=True),
-        total_pallets=Sum('vale__qtd_pbr')
-    ).order_by('responsavel__username')
+        total_pallets=Sum(F('qtd_pbr') + F('qtd_chepp')),
+        vale_count=Count('id')
+    ).order_by('-total_pallets')[:3]
 
-    total_fornecedores = {
-        'vales': sum(item['total_vales'] for item in fornecedores_data),
-        'pallets': sum(item['total_pallets'] for item in fornecedores_data)
-    }
+    # Preparar dados para o gráfico
+    grafico_labels = []
+    grafico_data = []
+    grafico_cores = []
+    grafico_tipos = []
+
+    for item in fornecedores_data:
+        grafico_labels.append(item['criado_por__usuario__username'] or 'Sem responsável')
+        grafico_data.append(item['total_pallets'])
+        grafico_cores.append('rgba(13, 110, 253, 0.7)')
+        grafico_tipos.append('Pallets')
+
+    # Formatando para a tabela de fornecedores
+    fornecedores_data = [{
+        'responsavel__username': item['criado_por__usuario__username'] or 'Sem responsável',
+        'vale': item['vale_count'],
+        'pallets': item['total_pallets']
+    } for item in fornecedores_data]
+
+    # Se não houver fornecedores, cria um registro vazio para evitar erros
+    if not fornecedores_data:
+        fornecedores_data = [{
+            'responsavel__username': 'Nenhum dado disponível',
+            'vale': 0,
+            'pallets': 0
+        }]
+        grafico_labels = ['Nenhum dado']
+        grafico_data = [0]
+        grafico_cores = ['rgba(200, 200, 200, 0.7)']
+        grafico_tipos = ['N/A']
 
     return render(request, 'cadastro/movimentacao/listar.html', {
-        'movimentacoes': movimentacoes,
         'titulo': 'Movimentações',
         'is_staff': request.user.is_staff,
         
@@ -893,7 +919,78 @@ def movimentacao_listar(request):
         'mais_180_dias': mais_180_dias,
         
         'fornecedores_data': fornecedores_data,
-        'total_fornecedores': total_fornecedores
+        'total_fornecedores': {
+            'vales': vales.count(),
+            'pallets': total_pallets
+        },
+        
+        # Dados para o gráfico
+        'grafico_labels': json.dumps(grafico_labels),
+        'grafico_data': json.dumps(grafico_data),
+        'grafico_cores': json.dumps(grafico_cores),
+        'grafico_tipos': json.dumps(grafico_tipos)
+    })
+
+@staff_required
+@require_http_methods(["GET"])
+def movimentacoes_filtrar(request):
+    """Filtra vales pallets para exibição no modal"""
+    tipo = request.GET.get('tipo', 'todos')
+    hoje = timezone.now().date()
+    
+    # Base query
+    if request.user.is_staff:
+        vales = ValePallet.objects.all().select_related(
+            'cliente', 'transportadora', 'motorista', 'criado_por__usuario'
+        )
+    else:
+        vales = ValePallet.objects.filter(
+            criado_por=request.user.pessoa_juridica
+        ).select_related('cliente', 'transportadora', 'motorista', 'criado_por__usuario')
+    
+    # Aplicar filtros conforme o tipo
+    if tipo == 'a_vencer':
+        vales = vales.filter(
+            estado='SAIDA',
+            data_validade__gte=hoje,
+            data_validade__lte=hoje + timedelta(days=30)
+        )
+    elif tipo == 'no_prazo':
+        vales = vales.filter(
+            Q(estado='EMITIDO') | 
+            (Q(estado='SAIDA') & Q(data_validade__gte=hoje))
+        )
+    elif tipo == 'vencidos':
+        vales = vales.filter(
+            estado='SAIDA',
+            data_validade__lt=hoje
+        )
+    elif tipo == 'movimentacao':
+        vales = vales.filter(estado='SAIDA')
+    elif tipo == 'coletado':
+        vales = vales.filter(estado='RETORNO')
+    elif tipo == 'pendente':
+        vales = vales.filter(estado='EMITIDO')
+    
+    # Serializa os dados para JSON
+    vales_data = []
+    for vale in vales:
+        vales_data.append({
+            'numero_vale': vale.numero_vale,
+            'cliente': vale.cliente.nome if vale.cliente else '-',
+            'transportadora': vale.transportadora.nome if vale.transportadora else '-',
+            'motorista': vale.motorista.nome if vale.motorista else '-',
+            'data_emissao': vale.data_emissao.strftime('%d/%m/%Y') if vale.data_emissao else '-',
+            'data_validade': vale.data_validade.strftime('%d/%m/%Y') if vale.data_validade else '-',
+            'estado': vale.estado,
+            'qtd_pbr': vale.qtd_pbr,
+            'qtd_chepp': vale.qtd_chepp,
+            'responsavel': vale.criado_por.usuario.username if vale.criado_por else '-'
+        })
+    
+    return JsonResponse({
+        'vales': vales_data,
+        'total': len(vales_data)
     })
 
 @transaction.atomic
@@ -944,8 +1041,201 @@ def movimentacao_registrar(request):
         'titulo': 'Registrar Movimentação',
         'url_retorno': 'valepallet_listar'
     })
+@login_required
+@require_http_methods(["GET"])
+def dashboard_filtrar(request):
+    """Filtra dados do dashboard por período"""
+    periodo = request.GET.get('periodo', 'todos')
+    agora_local = timezone.localtime(timezone.now())
+    hoje_local = agora_local.date()
+    
+    # Consulta básica de vales
+    if request.user.is_staff:
+        vales = ValePallet.objects.all().select_related('cliente', 'criado_por__usuario')
+    elif hasattr(request.user, 'pessoa_juridica'):
+        vales = ValePallet.objects.filter(
+            criado_por=request.user.pessoa_juridica
+        ).select_related('cliente', 'criado_por__usuario')
+    else:
+        return JsonResponse({'error': 'Acesso não autorizado'}, status=403)
+    
+    # Definir intervalo de datas com base no período
+    if periodo == 'hoje':
+        # Filtra vales emitidos hoje (considerando o fuso horário local)
+        inicio_dia = timezone.make_aware(datetime.datetime.combine(hoje_local, datetime.time.min))
+        fim_dia = timezone.make_aware(datetime.datetime.combine(hoje_local, datetime.time.max))
+        vales = vales.filter(data_emissao__range=(inicio_dia, fim_dia))
+        
+    elif periodo == 'semana':
+        # Lógica de semana de Domingo a Sábado
+        dia_da_semana = hoje_local.weekday()  # 0=segunda, 6=domingo
+        
+        if dia_da_semana == 6:  # Domingo
+            inicio_semana = hoje_local
+        elif dia_da_semana == 5:  # Sábado
+            inicio_semana = hoje_local - datetime.timedelta(days=5)
+        else:  # Dias entre Segunda e Sexta
+            inicio_semana = hoje_local - datetime.timedelta(days=dia_da_semana + 1)
+            
+        fim_semana = inicio_semana + datetime.timedelta(days=6)
+        
+        # Converter para datetime com fuso horário
+        inicio_semana_dt = timezone.make_aware(datetime.datetime.combine(inicio_semana, datetime.time.min))
+        fim_semana_dt = timezone.make_aware(datetime.datetime.combine(fim_semana, datetime.time.max))
+        
+        vales = vales.filter(data_emissao__range=(inicio_semana_dt, fim_semana_dt))
+        
+    elif periodo == 'mes':
+        # Filtra vales emitidos no mês atual (considerando o primeiro e último dia do mês no fuso local)
+        primeiro_dia = hoje_local.replace(day=1)
+        ultimo_dia = (hoje_local.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+        
+        inicio_mes = timezone.make_aware(datetime.datetime.combine(primeiro_dia, datetime.time.min))
+        fim_mes = timezone.make_aware(datetime.datetime.combine(ultimo_dia, datetime.time.max))
+        
+        vales = vales.filter(data_emissao__range=(inicio_mes, fim_mes))
+        
+    elif periodo == 'trimestre':
+        # Filtra vales emitidos no trimestre atual
+        trimestre_atual = (hoje_local.month - 1) // 3 + 1
+        mes_inicio = 3 * (trimestre_atual - 1) + 1
+        mes_fim = mes_inicio + 2
+        
+        primeiro_dia = hoje_local.replace(month=mes_inicio, day=1)
+        ultimo_dia = (hoje_local.replace(month=mes_fim, day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+        
+        inicio_trimestre = timezone.make_aware(datetime.datetime.combine(primeiro_dia, datetime.time.min))
+        fim_trimestre = timezone.make_aware(datetime.datetime.combine(ultimo_dia, datetime.time.max))
+        
+        vales = vales.filter(data_emissao__range=(inicio_trimestre, fim_trimestre))
+        
+    elif periodo == 'ano':
+        # Filtra vales emitidos no ano atual
+        primeiro_dia = hoje_local.replace(month=1, day=1)
+        ultimo_dia = hoje_local.replace(month=12, day=31)
+        
+        inicio_ano = timezone.make_aware(datetime.datetime.combine(primeiro_dia, datetime.time.min))
+        fim_ano = timezone.make_aware(datetime.datetime.combine(ultimo_dia, datetime.time.max))
+        
+        vales = vales.filter(data_emissao__range=(inicio_ano, fim_ano))
 
+    # Métricas de status (usando hoje_local para consistência)
+    a_vencer = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True,
+        data_validade__gte=hoje_local
+    ).count()
+    
+    coletado = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=False
+    ).count()
+    
+    pendente = vales.filter(
+        data_saida__isnull=True
+    ).count()
+    
+    vencido = vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True,
+        data_validade__lt=hoje_local
+    ).count()
 
+    # Função auxiliar para calcular a soma de pallets
+    def calcular_pallets(queryset):
+        return queryset.aggregate(
+            total=Sum(F('qtd_pbr') + F('qtd_chepp'))
+        )['total'] or 0
+
+    # Métricas de pallets
+    pallets_movimentacao = calcular_pallets(vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True
+    ))
+    
+    pallets_prazo = calcular_pallets(vales.filter(
+        Q(data_saida__isnull=True) |
+        (Q(data_saida__isnull=False) & Q(data_retorno__isnull=True) & Q(data_validade__gte=hoje_local))
+    ))
+    
+    pallets_vencidos = calcular_pallets(vales.filter(
+        data_saida__isnull=False,
+        data_retorno__isnull=True,
+        data_validade__lt=hoje_local
+    ))
+    
+    total_pallets = calcular_pallets(vales)
+
+    # Dias em aberto (baseado na data_emissao)
+    menos_30_dias = vales.filter(
+        data_emissao__date__gte=hoje_local - datetime.timedelta(days=30)
+    ).count()
+    
+    mais_30_dias = vales.filter(
+        data_emissao__date__lt=hoje_local - datetime.timedelta(days=30),
+        data_emissao__date__gte=hoje_local - datetime.timedelta(days=90)
+    ).count()
+    
+    mais_90_dias = vales.filter(
+        data_emissao__date__lt=hoje_local - datetime.timedelta(days=90),
+        data_emissao__date__gte=hoje_local - datetime.timedelta(days=180)
+    ).count()
+    
+    mais_180_dias = vales.filter(
+        data_emissao__date__lt=hoje_local - datetime.timedelta(days=180)
+    ).count()
+
+    # Agregação por fornecedor
+    fornecedores_data = vales.values(
+        'criado_por__usuario__username'
+    ).annotate(
+        total_pallets=Sum(F('qtd_pbr') + F('qtd_chepp')),
+        vale_count=Count('id')
+    ).order_by('-total_pallets')[:3]
+
+    # Preparar dados para o gráfico
+    grafico_labels = []
+    grafico_data = []
+    grafico_cores = []
+
+    for item in fornecedores_data:
+        grafico_labels.append(item['criado_por__usuario__username'] or 'Sem responsável')
+        grafico_data.append(item['total_pallets'])
+        grafico_cores.append('rgba(13, 110, 253, 0.7)')
+
+    # Formatando para a tabela de fornecedores
+    fornecedores_data = [{
+        'responsavel__username': item['criado_por__usuario__username'] or 'Sem responsável',
+        'vale': item['vale_count'],
+        'pallets': item['total_pallets']
+    } for item in fornecedores_data]
+
+    return JsonResponse({
+        'a_vencer': a_vencer,
+        'coletado': coletado,
+        'pendente': pendente,
+        'vencido': vencido,
+        
+        'pallets_movimentacao': pallets_movimentacao,
+        'pallets_prazo': pallets_prazo,
+        'pallets_vencidos': pallets_vencidos,
+        'total_pallets': total_pallets,
+        
+        'menos_30_dias': menos_30_dias,
+        'mais_30_dias': mais_30_dias,
+        'mais_90_dias': mais_90_dias,
+        'mais_180_dias': mais_180_dias,
+        
+        'grafico_labels': grafico_labels,
+        'grafico_data': grafico_data,
+        'grafico_cores': grafico_cores,
+        
+        'fornecedores_data': fornecedores_data,
+        'total_fornecedores': {
+            'vales': vales.count(),
+            'pallets': total_pallets
+        }
+    })
 # ===== APIs EXTERNAS =====
 @require_GET
 def validar_cnpj_api(request):
@@ -1042,3 +1332,4 @@ def listar_municipios_api(request, uf):
     except Exception as e:
         logger.error(f"Erro inesperado ao listar municípios: {str(e)}")
         return JsonResponse({'erro': 'Erro interno'}, status=500)
+    

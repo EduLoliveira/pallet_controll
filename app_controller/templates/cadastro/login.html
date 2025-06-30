@@ -41,8 +41,12 @@
                             <!-- Formulário de Usuário -->
                             <div class="mb-3">
                                 <label for="id_username" class="form-label required-field">Login da Empresa</label>
-                                <input type="text" class="form-control" id="id_username" name="username" placeholder="Nome da sua empresa..." required>
+                                <input type="text" class="form-control" id="id_username" name="username"
+                                    placeholder="Nome da sua empresa..." required>
+                                <div class="form-text d-none" id="loginHint">⚠️ Não use espaços. Caso queira um nome com
+                                    espaço, use underline <strong>_</strong>.</div>
                                 <div class="invalid-feedback">Nome de Login da Empresa.</div>
+
                             </div>
 
                             <div class="mb-3">
@@ -252,7 +256,19 @@
                     }
                 }, { passive: false });
             }
+
+            const inputUsername = document.getElementById('id_username');
+            const hint = document.getElementById('loginHint');
+
+            inputUsername.addEventListener('focus', () => {
+                hint.classList.remove('d-none'); // mostra a mensagem
+            });
+
+            inputUsername.addEventListener('blur', () => {
+                hint.classList.add('d-none'); // esconde a mensagem ao sair do campo
+            });
         });
+
     </script>
 </body>
 
