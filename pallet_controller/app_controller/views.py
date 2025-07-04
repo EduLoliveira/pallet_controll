@@ -64,8 +64,17 @@ def login(request):
         user = authenticate(request, username=username, password=password)
         
         if user is None:
-            logger.warning(f"Falha na autenticação para o usuário: {username}")
-            messages.error(request, 'Credenciais inválidas. Por favor, tente novamente.')
+            # Verifica se o usuário existe para dar feedback mais específico
+            try:
+                Usuario.objects.get(username=username)
+                # Usuário existe, mas senha está incorreta
+                logger.warning(f"Senha incorreta para o usuário: {username}")
+                messages.error(request, 'Senha incorreta. Por favor, tente novamente.')
+            except Usuario.DoesNotExist:
+                # Usuário não existe
+                logger.warning(f"Tentativa de login com usuário inexistente: {username}")
+                messages.error(request, 'Usuário não encontrado. Verifique o login ou cadastre-se.')
+            
             return render(request, 'cadastro/login_form.html')
 
         auth_login(request, user)
@@ -89,6 +98,7 @@ def custom_logout(request):
     messages.success(request, 'Você foi desconectado com sucesso.')
     return redirect('login')
 
+    
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def cadastrar_pessoa_juridica(request):
@@ -481,9 +491,6 @@ def valepallet_listar(request):
     data_inicio = request.GET.get('data_inicio', '')
     data_fim = request.GET.get('data_fim', '')
     
-    # Aplicar filtros sempre que houver parâmetros no GET
-    # (removida a verificação por 'aplicar_filtros')
-    
     # Filtro de busca
     if search:
         vales = vales.filter(
@@ -733,7 +740,6 @@ def valepallet_editar(request, id):
         messages.error(request, '❌ Não é possível editar um vale que já foi completado (RETORNO).')
         return redirect('valepallet_detalhes', id=vale.id)
     
-    # Restante do código da view...
     
     if request.method == 'POST':
         form = ValePalletForm(request.POST, instance=vale, user=request.user)

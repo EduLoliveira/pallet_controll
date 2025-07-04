@@ -1,4 +1,3 @@
-
 document.addEventListener('DOMContentLoaded', function () {
     const toggleButtons = document.querySelectorAll('.password-toggle');
 

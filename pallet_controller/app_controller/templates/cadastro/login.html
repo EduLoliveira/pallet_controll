@@ -225,10 +225,27 @@
         </div>
     </main>
 
+    <!-- Modal de Erro -->
+    <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="errorModalLabel">Erro!</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="errorModalMessage">
+                    <!-- Mensagem de erro será inserida aqui via JavaScript -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/login.js' %}"></script>
     <script>
-        // Adicione no arquivo login.js
         document.addEventListener('DOMContentLoaded', function () {
             // Suaviza o scroll para campos com erro
             const form = document.getElementById('PessoaJuridicaForm');
@@ -267,9 +284,60 @@
             inputUsername.addEventListener('blur', () => {
                 hint.classList.add('d-none'); // esconde a mensagem ao sair do campo
             });
-        });
 
+            // Função para exibir mensagem de erro no modal
+            function showErrorModal(message) {
+                const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+                const errorMessageElement = document.getElementById('errorModalMessage');
+                
+                errorMessageElement.textContent = message;
+                errorModal.show();
+            }
+
+            // Validação do CNPJ
+            document.getElementById('validar-cnpj-btn').addEventListener('click', function() {
+                const cnpj = document.getElementById('id_cnpj').value.replace(/\D/g, '');
+                
+                if (!cnpj || cnpj.length !== 14) {
+                    showErrorModal("CNPJ inválido! Digite um CNPJ válido com 14 dígitos.");
+                    return;
+                }
+                
+
+                document.getElementById('cnpjFeedback').textContent = "CNPJ formatado corretamente!";
+                document.getElementById('cnpjFeedback').style.color = "green";
+            });
+
+            // Validação do CEP
+            document.getElementById('buscar-cep-btn').addEventListener('click', function() {
+                const cep = document.getElementById('id_cep').value.replace(/\D/g, '');
+                
+                if (!cep || cep.length !== 8) {
+                    showErrorModal("CEP inválido! Digite um CEP válido com 8 dígitos.");
+                    return;
+                }
+                
+                document.getElementById('cepFeedback').textContent = "CEP formatado corretamente!";
+                document.getElementById('cepFeedback').style.color = "green";
+            });
+
+            // Validação do formulário antes do envio
+            form.addEventListener('submit', function(e) {
+                if (!this.checkValidity()) {
+                    e.preventDefault();
+                    showErrorModal("Por favor, preencha todos os campos obrigatórios corretamente!");
+                }
+                
+                // Verifica se as senhas coincidem
+                const password1 = document.getElementById('id_password1').value;
+                const password2 = document.getElementById('id_password2').value;
+                
+                if (password1 !== password2) {
+                    e.preventDefault();
+                    showErrorModal("As senhas não coincidem! Por favor, digite a mesma senha nos dois campos.");
+                }
+            });
+        });
     </script>
 </body>
-
 </html>
