@@ -1,54 +1,123 @@
-========================================================================================
-**Fluxo de Uso e Permissões da Aplicação**
+# 📦 Pallet Controller - Sistema de Gerenciamento de Vales de Pallet
 
-- Cadastro e Login
-0.3 – O usuário realiza o cadastro na área "Cadastre-se".
+## 📋 Sobre o Projeto  
+O **Pallet Controller** é um sistema completo para controle e gerenciamento de vales de pallet, desenvolvido em **Django** com **PostgreSQL (Supabase)**.  
+A aplicação permite emissão, validação e acompanhamento de vales com **QR Codes**, além de controle de permissões de acesso por tipo de usuário.  
 
-0.5 – Após o cadastro, o usuário será redirecionado para a tela de Login, onde deve autenticar-se utilizando username e senha.
+---
 
-0.6 – Após o login, o usuário terá acesso a uma área restrita, sendo identificado como usuário autenticado, com permissões para CRUD parcial (Create, Read e Update).
+## 🎯 Funcionalidades Principais  
 
-- Sessão e Atribuição de Registros
-1.0 – Após o primeiro login, a sessão permanecerá ativa até o usuário realizar o logout manualmente.
+- ✅ Cadastro e autenticação de usuários  
+- ✅ CRUD completo de vales de pallet  
+- ✅ Geração e validação de QR Codes  
+- ✅ Controle de permissões por tipo de usuário  
+- ✅ Dashboard administrativo  
+- ✅ Interface responsiva  
+- ✅ Integração com Supabase (PostgreSQL)  
+- ✅ Validação de documentos brasileiros (CPF/CNPJ)  
 
-1.1 – Cada ação de criação ou edição em formulários será registrada no banco de dados, atribuindo automaticamente o campo "criado_por" com o ID do usuário (Pessoa Jurídica).
+---
 
----------------------------------------------------------------------------------------
-**Permissões de Administradores (Staff)**
-1.3 – Usuários com perfil staff (administradores) possuem permissões totais, incluindo:
-1.3.5 -Exclusão de vales;
-1.3.7 - Alteração de estados/status;
-1.3.9 - Emissão e consulta de todos os registros da base de dados.
+## 👥 Fluxo de Uso e Permissões  
 
-1.4 – A atualização do status do QR Code é uma ação exclusiva para administradores (is_staff=True).
+### Cadastro e Login  
+- **0.3** – Usuário realiza cadastro na área *"Cadastre-se"*  
+- **0.5** – Após cadastro, é redirecionado para a tela de Login  
+- **0.6** – Usuários comuns acessam área restrita com permissões limitadas (CRUD parcial)  
 
-- Validade dos Vales
-1.7 – Todos os vales emitidos terão validade até o final do dia escolhido no momento da emissão.
+### Sessão e Atribuição de Registros  
+- **1.0** – Sessão permanece ativa até logout manual  
+- **1.1** – Registros criados/atualizados armazenam automaticamente o campo `criado_por` com ID do usuário  
 
-**Objetivo da Aplicação**
-2.0 – Esta aplicação tem como principal objetivo gerenciar de forma centralizada a emissão de vales de pallets, beneficiando tanto os fornecedores quanto os administradores do sistema.
-O fluxo facilita o controle, validação e acompanhamento por parte de todos os envolvidos: colaboradores internos, beneficiários e prestadores de serviço.
-========================================================================================
+### Permissões de Administradores (Staff)  
+- **1.3** – Usuários staff possuem permissões totais:  
+  - **1.3.5** – Exclusão de vales  
+  - **1.3.7** – Alteração de estados/status  
+  - **1.3.9** – Emissão e consulta de todos os registros  
+- **1.4** – Atualização do status do QR Code é exclusiva para administradores (`is_staff=True`)  
 
-Etapas para Rodar e usar o Codigo: 
+### Validade dos Vales  
+- **1.7** – Todos os vales emitidos têm validade até o final do dia definido na emissão  
 
---- sudo apt update
---- sudo apt install python3
---- sudo apt install postgresql
+### Objetivo da Aplicação  
+- **2.0** – Gerenciamento centralizado da emissão e controle de vales de pallets para fornecedores e administradores  
 
-# Instalando algumas dependencias da aplicação, com o projeto Django.
-- sudo apt update
-- pip install django psycopg2-binary requests validate-docbr qrcode[pil] python-dotenv supabase
-- pip install -r requirements.txt
+---
 
-- Fluxo de Cadastro e Acesso ✅ 
-Cadastro:
-Usuários realizam o cadastro através da área "Cadastre-se".
+## 🚀 Tecnologias Utilizadas  
 
-Login:
-Após o cadastro, o usuário é redirecionado para a tela de Login, onde deve autenticar-se com username e senha.
-O sistema mantém a sessão ativa até que o usuário execute o logout manualmente.
+- **Django 4.0**  
+- **Python 3.8+**  
+- **PostgreSQL (Supabase)**  
+- **Bootstrap 5**  
+- **JavaScript**  
+- **QR Code Generation**  
+- **Validate-docbr** (validação de documentos brasileiros)  
+- **Whitenoise** (arquivos estáticos em produção)  
 
-Permissões de Usuário Comum:
-Usuários autenticados têm acesso a funcionalidades de Create, Read e Update nos módulos autorizados.
-Todas as ações realizadas por estes usuários são registradas no banco de dados, atribuindo o campo "criado_por" com o ID da Pessoa Jurídica (usuário responsável).
+---
+
+## ⚙️ Configuração do Ambiente  
+
+### 1. Clonar o Repositório  
+```bash
+git clone https://github.com/EduLoliveira/Pallets_Distribution.git
+cd pallet-controller
+```
+
+### 2. Criar e Ativar Ambiente Virtual (venv)  
+```bash
+# Criar ambiente virtual
+python -m venv venv
+
+# Ativar no Linux/Mac
+source venv/bin/activate
+
+# Ativar no Windows
+venv\Scripts\activate
+```
+
+### 3. Instalar Dependências  
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configurar Variáveis de Ambiente  
+Copiar o arquivo **.env.example** para **.env**:  
+```bash
+cp .env.example .env
+```
+
+### 5. Executar Migrações  
+```bash
+python manage.py migrate
+```
+
+### 6. Criar Superusuário  
+```bash
+python manage.py createsuperuser
+```
+
+### 7. Rodar o Servidor  
+```bash
+python manage.py runserver
+```
+
+---
+
+## ✅ Acesso ao Sistema  
+
+- **URL padrão:** [http://localhost:8000](http://localhost:8000)  
+- **Área Administrativa:** `/admin`  
+
+---
+
+## 📌 Observações  
+
+- Sempre ativar o ambiente virtual antes de rodar o projeto.  
+- Para desativar o ambiente virtual:  
+  ```bash
+  deactivate
+  ```  
+- Em produção, configurar variáveis de ambiente no servidor (não versionar `.env`).  

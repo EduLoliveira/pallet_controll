@@ -1,0 +1,460 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <title>Gestão de Vales de Pallet</title>
+</head>
+
+<body class="d-flex flex-column min-vh-100">
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top py-3">
+        <div class="container-fluid px-4">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center active" href="#" role="button"
+                            data-bs-toggle="dropdown">
+                            <i class="bi bi-journal-plus me-2" style="font-size: 1.7rem;"></i>
+                            <h5>CADASTROS</h5>
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'cliente_cadastrar' %}">
+                                    <i class="bi bi-people me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>CLIENTES</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center"
+                                    href="{% url 'motorista_cadastrar' %}">
+                                    <i class="bi bi-person-badge me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>MOTORISTAS</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center"
+                                    href="{% url 'transportadora_cadastrar' %}">
+                                    <i class="bi bi-truck me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>TRANSPORTADORAS</h5>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button"
+                            data-bs-toggle="dropdown">
+                            <i class="bi bi-list-ul me-2" style="font-size: 1.7rem;"></i>
+                            <h5>LISTAGENS</h5>
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'cliente_listar' %}">
+                                    <i class="bi bi-people me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>CLIENTES</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'motorista_listar' %}">
+                                    <i class="bi bi-person-badge me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>MOTORISTAS</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center"
+                                    href="{% url 'transportadora_listar' %}">
+                                    <i class="bi bi-truck me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>TRANSPORTADORAS</h5>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'valepallet_listar' %}">
+                                    <i class="bi bi-receipt me-3" style="font-size: 1.7rem;"></i>
+                                    <h5>VALES DE PALLET</h5>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link d-flex align-items-center" href="{% url 'valepallet_cadastrar' %}">
+                            <i class="bi bi-receipt me-2" style="font-size: 2rem;"></i>
+                            <h5>VALES</h5>
+                        </a>
+                    </li>
+                    {% if user.is_staff %}
+                    <li class="nav-item">
+                        <a class="nav-link d-flex align-items-center" href="{% url 'movimentacao_listar' %}">
+                            <i class="bi bi-arrow-left-right me-2" style="font-size: 2rem;"></i>
+                            <h5>MOVIMENTAÇÕES</h5>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+
+                <div class="d-flex align-items-center ms-auto">
+                    {% if user.is_authenticated %}
+                    <div class="dropdown" style="color: white;">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle me-2" style="font-size: 1.7rem;"></i>
+                            <h5 class="mb-0">{{ user.username|upper }}</h5>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center" href="{% url 'logout' %}">
+                                    <i class="bi bi-box-arrow-right me-2" style="font-size: 1.3rem;"></i>
+                                    <span>Sair</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <style>
+        .qr-code-img {
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            object-fit: contain;
+        }
+
+        .qr-code-modal-img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .filter-section {
+            transition: all 0.3s ease;
+        }
+        
+        .filter-toggle {
+            cursor: pointer;
+        }
+        
+        .badge-status {
+            font-size: 0.85rem;
+            padding: 0.35em 0.65em;
+        }
+    </style>
+
+    <main class="flex-grow-1 py-5">
+        <div class="container-fluid px-5">
+            <div class="container-fluid px-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1 class="mt-4">Vales Pallets</h1>
+                    <div>
+                        <a href="{% url 'valepallet_cadastrar' %}" class="btn btn-primary me-2">
+                            <i class="bi bi-plus-circle"></i> Novo Vale
+                        </a>
+                        <button class="btn btn-outline-secondary filter-toggle" id="toggleFilters">
+                            <i class="bi bi-funnel"></i> Filtros
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Seção de Filtros Avançados -->
+                <div class="card mb-4 filter-section" id="filterSection">
+                   
+                    <div class="card-body">
+                        <form method="get" id="filterForm">
+                            <div class="row g-3">
+                                <!-- Filtro por Texto -->
+                                <div class="col-md-4">
+                                    <label for="searchInput" class="form-label">Busca Geral</label>
+                                    <input type="text" class="form-control" id="searchInput" name="search" 
+                                           placeholder="Número, Cliente, Motorista..." value="{{ request.GET.search }}">
+                                </div>
+                                
+                               
+                                
+                                <!-- Filtro por Status -->
+                                <div class="col-md-3">
+                                    <label for="statusFilter" class="form-label">Status</label>
+                                    <select class="form-select" id="statusFilter" name="estado">
+                                        <option value="">Todos</option>
+                                        <option value="EMITIDO" {% if request.GET.estado == 'EMITIDO' %}selected{% endif %}>Emitido</option>
+                                        <option value="SAIDA" {% if request.GET.estado == 'SAIDA' %}selected{% endif %}>Saída</option>
+                                        <option value="RETORNO" {% if request.GET.estado == 'RETORNO' %}selected{% endif %}>Retorno</option>
+                                        <option value="CANCELADO" {% if request.GET.estado == 'CANCELADO' %}selected{% endif %}>Cancelado</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Filtro por Responsável -->
+                                <div class="col-md-2">
+                                    <label for="responsibleFilter" class="form-label">Responsável</label>
+                                    <select class="form-select" id="responsibleFilter" name="responsavel">
+                                        <option value="">Todos</option>
+                                        {% for user in usuarios %}
+                                        <option value="{{ user.id }}" {% if request.GET.responsavel == user.id|stringformat:"s" %}selected{% endif %}>
+                                            {{ user.username }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <!-- Filtro por Data -->
+                                <div class="col-md-3">
+                                    <label for="dateFilter" class="form-label">Data Emissão</label>
+                                    <select class="form-select" id="dateFilter" name="data_emissao">
+                                        <option value="">Todas</option>
+                                        <option value="today" {% if request.GET.data_emissao == 'today' %}selected{% endif %}>Hoje</option>
+                                        <option value="week" {% if request.GET.data_emissao == 'week' %}selected{% endif %}>Esta Semana</option>
+                                        <option value="month" {% if request.GET.data_emissao == 'month' %}selected{% endif %}>Este Mês</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Campos de data personalizada -->
+                                <div class="col-md-6" id="customDateRange" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label for="startDate" class="form-label">Data Início</label>
+                                            <input type="date" class="form-control" id="startDate" name="data_inicio" 
+                                                   value="{{ request.GET.data_inicio }}">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="endDate" class="form-label">Data Fim</label>
+                                            <input type="date" class="form-control" id="endDate" name="data_fim" 
+                                                   value="{{ request.GET.data_fim }}">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+            
+                                
+                                <!-- Botões de Ação -->
+                                <div class="col-md-12 d-flex justify-content-between mt-3">
+                                    <div>
+                                        <button type="submit" class="btn btn-primary me-2" id="applyFilters">
+                                            <i class="bi bi-funnel"></i> Aplicar Filtros
+                                        </button>
+                                        <a href="{% url 'valepallet_listar' %}" class="btn btn-outline-secondary">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Limpar
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    
+                </div>
+
+                <!-- Tabela de Vales -->
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-table me-1"></i>
+                            Lista de Vales Pallets
+                        </div>
+                        <div class="text-muted small">
+                            Mostrando <span id="showingCount">{{ vales.start_index }}</span>-<span id="showingEnd">{{ vales.end_index }}</span> de <span id="totalCount">{{ vales.paginator.count }}</span> registros
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-bordered" id="valesTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Número</th>
+                                        <th>Data Emissão</th>
+                                        <th>Cliente</th>
+                                        <th>Motorista</th>
+                                        <th>Transportadora</th>
+                                        <th>Status</th>
+                                        <th>QR Code</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for vale in vales %}
+                                    <tr>
+                                        <td>{{ vale.numero_vale }}</td>
+                                        <td>{{ vale.data_emissao|date:"d/m/Y" }}</td>
+                                        <td>{{ vale.cliente.nome }}</td>
+                                        <td>{{ vale.motorista.nome }}</td>
+                                        <td>{{ vale.transportadora.nome }}</td>
+                                        <td data-estado="{{ vale.estado }}">
+                                            <span class="badge 
+                                                {% if vale.estado == 'EMITIDO' %}bg-primary
+                                                {% elif vale.estado == 'SAIDA' %}bg-warning text-dark
+                                                {% elif vale.estado == 'RETORNO' %}bg-success
+                                                {% elif vale.estado == 'CANCELADO' %}bg-danger
+                                                {% else %}bg-secondary{% endif %} badge-status">
+                                                {{ vale.estado }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if vale.qr_code %}
+                                            <img src="{{ vale.qr_code.url }}" alt="QR Code" class="qr-code-img"
+                                                data-bs-toggle="modal" data-bs-target="#qrModal{{ vale.id }}">
+                                            {% else %}
+                                            <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="btn-group" role="group">
+                                                <a href="{% url 'valepallet_editar' vale.id %}" class="btn btn-sm btn-warning"
+                                                    title="Editar">
+                                                    <i class="bi bi-pencil"></i>
+                                                </a>
+                                                <a href="{% url 'valepallet_detalhes' vale.id %}"
+                                                    class="btn btn-sm btn-info" title="Detalhes">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+
+                                    <!-- Modal QR Code -->
+                                    <div class="modal fade" id="qrModal{{ vale.id }}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog modal-sm">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">QR Code - Vale {{ vale.numero_vale }}</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                                        aria-label="Close"></button>
+                                                </div>
+                                                <div class="modal-body text-center">
+                                                    {% if vale.qr_code %}
+                                                    <img src="{{ vale.qr_code.url }}" alt="QR Code" class="img-fluid">
+                                                    <p class="mt-2 text-muted small">Vale ID: {{ vale.id }}</p>
+                                                    {% else %}
+                                                    <p class="text-danger">QR Code não disponível</p>
+                                                    {% endif %}
+                                                </div>
+                                                <div class="modal-footer">
+                                                    {% if vale.qr_code %}
+                                                    <button type="button" class="btn btn-secondary"
+                                                        data-bs-dismiss="modal">Fechar</button>
+                                                    <a href="{{ vale.qr_code.url }}" download class="btn btn-primary">
+                                                        <i class="bi bi-download"></i> Baixar
+                                                    </a>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="8" class="text-center">Nenhum vale pallet cadastrado</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Paginação -->
+                        {% if vales.has_other_pages %}
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-center mt-4">
+                                {% if vales.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="First">
+                                        <span aria-hidden="true">&laquo;&laquo;</span>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ vales.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Previous">
+                                        <span aria-hidden="true">&laquo;</span>
+                                    </a>
+                                </li>
+                                {% endif %}
+                                
+                                {% for num in vales.paginator.page_range %}
+                                    {% if vales.number == num %}
+                                    <li class="page-item active"><a class="page-link" href="#">{{ num }}</a></li>
+                                    {% elif num > vales.number|add:'-3' and num < vales.number|add:'3' %}
+                                    <li class="page-item"><a class="page-link" href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a></li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if vales.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ vales.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Next">
+                                        <span aria-hidden="true">&raquo;</span>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ vales.paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Last">
+                                        <span aria-hidden="true">&raquo;&raquo;</span>
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="py-4 mt-auto bg-light" style="width: 100%;">
+        <div style="width: 100%;">
+            <div class="d-flex flex-column flex-md-column justify-content-between align-items-center"
+                style="padding:1% 0; color:white; background-color: black; width: 100%;">
+                <div class="mb-3 mb-md-0">
+                    <p class="mb-0 fw-bold fs-5">
+                        <i class="bi bi-c-circle"></i> SISTEMA DE GESTÃO DE VALES DE PALLET
+                        <span id="current-year"></span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elementos
+            const filterSection = document.getElementById('filterSection');
+            const toggleFilters = document.getElementById('toggleFilters');
+            const dateFilter = document.getElementById('dateFilter');
+            const customDateRange = document.getElementById('customDateRange');
+            const liveFilterSwitch = document.getElementById('liveFilterSwitch');
+            const filterForm = document.getElementById('filterForm');
+            const exportExcelBtn = document.getElementById('exportExcel');
+            const printTableBtn = document.getElementById('printTable');
+            
+            // Ano atual no footer
+            document.getElementById('current-year').textContent = new Date().getFullYear();
+            
+            // Alternar visibilidade dos filtros
+            toggleFilters.addEventListener('click', function() {
+                filterSection.style.display = filterSection.style.display === 'none' ? 'block' : 'none';
+                this.innerHTML = filterSection.style.display === 'none' ? 
+                    '<i class="bi bi-funnel"></i> Mostrar Filtros' : 
+                    '<i class="bi bi-funnel"></i> Ocultar Filtros';
+            });
+            
+            // Mostrar/ocultar campos de data personalizada
+            dateFilter.addEventListener('change', function() {
+                customDateRange.style.display = this.value === 'custom' ? 'block' : 'none';
+            });
+            
+            // Inicializar visibilidade dos campos de data
+            if (dateFilter.value === 'custom') {
+                customDateRange.style.display = 'block';
+            }
+            
+
+        });
+    </script>
+</body>
+</html>
