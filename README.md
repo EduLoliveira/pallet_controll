@@ -62,7 +62,7 @@ A aplicação permite emissão, validação e acompanhamento de vales com **QR C
 
 ### 1. Clonar o Repositório  
 ```bash
-git clone https://github.com/EduLoliveira/Pallets_Distribution.git
+git clone https://github.com/EduLoliveira/pallet_controll.git
 cd pallet-controller
 ```
 
