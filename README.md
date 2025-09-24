@@ -82,6 +82,7 @@ venv\Scripts\activate
 ### 3. Instalar Dependências  
 ```bash
 pip install -r requirements.txt
+python.exe -m pip install --upgrade pip
 ```
 
 ### 4. Configurar Variáveis de Ambiente  
