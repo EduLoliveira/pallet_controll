@@ -95,8 +95,11 @@ Windows
 copy env.exemple .env
 ```
 
+
 ### 5. Executar Migrações  
 ```bash
+cd pallet_controller
+
 python manage.py migrate
 ```
 
