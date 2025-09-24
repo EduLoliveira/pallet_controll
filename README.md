@@ -88,7 +88,11 @@ python.exe -m pip install --upgrade pip
 ### 4. Configurar Variáveis de Ambiente  
 Copiar o arquivo **.env.example** para **.env**:  
 ```bash
+Linux
 cp env.example .env
+
+Windows
+copy env.exemple .env
 ```
 
 ### 5. Executar Migrações  
