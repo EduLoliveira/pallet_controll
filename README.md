@@ -63,7 +63,8 @@ A aplicação permite emissão, validação e acompanhamento de vales com **QR C
 ### 1. Clonar o Repositório  
 ```bash
 git clone https://github.com/EduLoliveira/pallet_controll.git
-cd pallet-controller
+cd pallet_controll
+cd pallet
 ```
 
 ### 2. Criar e Ativar Ambiente Virtual (venv)  
@@ -86,7 +87,7 @@ pip install -r requirements.txt
 ### 4. Configurar Variáveis de Ambiente  
 Copiar o arquivo **.env.example** para **.env**:  
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 ### 5. Executar Migrações  
@@ -108,7 +109,7 @@ python manage.py runserver
 
 ## ✅ Acesso ao Sistema  
 
-- **URL padrão:** [http://localhost:8000](http://localhost:8000)  
+- **URL padrão:** http://localhost:8000  
 - **Área Administrativa:** `/admin`  
 
 ---
